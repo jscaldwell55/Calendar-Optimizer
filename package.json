@@ -1,0 +1,42 @@
+{
+  "name": "calendar-optimizer",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@tanstack/react-query": "latest",
+    "class-variance-authority": "latest",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "date-fns-tz": "^3.2.0",
+    "googleapis": "^144.0.0",
+    "lucide-react": "latest",
+    "luxon": "latest",
+    "next": "latest",
+    "next-auth": "^4.24.10",
+    "node-fetch": "^3.3.2",
+    "react": "latest",
+    "react-dom": "latest",
+    "tailwind-merge": "^2.5.4",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "autoprefixer": "^10.0.0",
+    "postcss": "^8.0.0",
+    "postcss-import": "^16.1.0",
+    "tailwindcss": "^3.0.0",
+    "typescript": "^5.6.3"
+  }
+}

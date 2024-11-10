@@ -1,0 +1,132 @@
+import { google } from 'googleapis';
+import { DateTime } from 'luxon';
+
+export class CalendarService {
+  constructor(accessToken) {
+    this.calendar = google.calendar({
+      version: 'v3',
+      auth: new google.auth.OAuth2().setCredentials({
+        access_token: accessToken
+      })
+    });
+  }
+
+  async findOptimalMeetingTimes({
+    attendees,
+    duration = 60,
+    daysToCheck = 10,
+    preferences = {
+      earliestTime: '09:00',
+      latestTime: '17:00',
+      preferredDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+      timezone: 'UTC'
+    }
+  }) {
+    const startDate = DateTime.now().setZone(preferences.timezone);
+    const endDate = startDate.plus({ days: daysToCheck });
+
+    // Get free/busy information
+    const freeBusyResponse = await this.calendar.freebusy.query({
+      requestBody: {
+        timeMin: startDate.toISO(),
+        timeMax: endDate.toISO(),
+        items: attendees.map(email => ({ id: email })),
+        timeZone: preferences.timezone
+      }
+    });
+
+    const busyPeriods = Object.values(freeBusyResponse.data.calendars)
+      .flatMap(calendar => calendar.busy)
+      .map(period => ({
+        start: DateTime.fromISO(period.start),
+        end: DateTime.fromISO(period.end)
+      }));
+
+    // Find available slots
+    const availableSlots = this.findAvailableSlots({
+      busyPeriods,
+      startDate,
+      endDate,
+      duration,
+      preferences
+    });
+
+    // Score and sort slots
+    return this.scoreAndSortSlots(availableSlots, preferences);
+  }
+
+  findAvailableSlots({
+    busyPeriods,
+    startDate,
+    endDate,
+    duration,
+    preferences
+  }) {
+    const slots = [];
+    let currentSlot = startDate;
+
+    while (currentSlot < endDate) {
+      const slotEnd = currentSlot.plus({ minutes: duration });
+      
+      if (this.isWithinWorkingHours(currentSlot, preferences) &&
+          this.isPreferredDay(currentSlot, preferences) &&
+          !this.conflictsWithBusyPeriods(currentSlot, slotEnd, busyPeriods)) {
+        slots.push({
+          start: currentSlot,
+          end: slotEnd
+        });
+      }
+
+      currentSlot = currentSlot.plus({ minutes: 30 });
+    }
+
+    return slots;
+  }
+
+  scoreAndSortSlots(slots, preferences) {
+    return slots
+      .map(slot => ({
+        ...slot,
+        score: this.calculateSlotScore(slot, preferences)
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5);
+  }
+
+  calculateSlotScore(slot, preferences) {
+    let score = 100;
+
+    // Earlier dates preferred
+    const daysFromNow = slot.start.diffNow('days').days;
+    score -= daysFromNow * 5;
+
+    // Preferred times of day
+    const hour = slot.start.hour;
+    if (hour === 10 || hour === 14) score += 10; // Mid-morning/afternoon preferred
+    if (hour === 12) score -= 10; // Avoid lunch time
+
+    // Preferred days
+    if (preferences.preferredDays.includes(slot.start.weekdayLong)) {
+      score += 15;
+    }
+
+    return score;
+  }
+
+  isWithinWorkingHours(datetime, preferences) {
+    const time = datetime.toFormat('HH:mm');
+    return time >= preferences.earliestTime && time <= preferences.latestTime;
+  }
+
+  isPreferredDay(datetime, preferences) {
+    return preferences.preferredDays.includes(datetime.weekdayLong);
+  }
+
+  conflictsWithBusyPeriods(start, end, busyPeriods) {
+    return busyPeriods.some(busy => 
+      (start >= busy.start && start < busy.end) ||
+      (end > busy.start && end <= busy.end)
+    );
+  }
+}
+``
