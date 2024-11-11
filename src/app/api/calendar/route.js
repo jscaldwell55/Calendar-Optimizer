@@ -85,9 +85,11 @@ export async function POST(req) {
         const slotStart = new Date(currentTime);
         const slotEnd = new Date(currentTime + slotDuration);
 
-      // Skip non-working hours (5 PM to 9 AM)
-      const hours = slotStart.getHours(); // returns an integer from 0 to 23;
-      if (hours < 9 || hours >= 17);
+       // Skip non-working hours (before 9 AM and after 5 PM)
+       const hours = slotStart.getHours(); // returns an integer from 0 to 23
+       if (hours < 9 || hours >= 17);
+       continue; // Skip the current iteration and move to the next time slot
+
     
         // Skip weekends
         const day = slotStart.getDay();
