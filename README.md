@@ -17,7 +17,7 @@
 
 - Google Account (works with both @gmail.com and Google Workspace domains)
 - Calendar access permission
-- Modern web browser
+- Web browser
 
 ## Time Slot Logic
 
@@ -52,13 +52,6 @@ The app automatically filters out:
 - Google Calendar API integration
 - NextAuth.js for authentication
 - Server-side rendering for optimal performance
-
-## Limitations
-
-- Maximum of 5 time slots returned
-- Google Calendar only
-- Business hours (9 AM - 5 PM) only
-- Future availability only
 
 ## Deployment
 
