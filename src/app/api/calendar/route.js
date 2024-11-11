@@ -72,16 +72,16 @@ export async function POST(req) {
         }))
         .sort((a, b) => a.start.getTime() - b.start.getTime());
 
-    // Find available slots
-    const availableSlots = [];
-    const slotDuration = duration * 60 * 1000; // convert duration from minutes to milliseconds
-    const stepSize = 30 * 60 * 1000; // 30 minutes in milliseconds
+   // Find available slots
+const availableSlots = [];
+const slotDuration = duration * 60 * 1000; // convert duration from minutes to milliseconds
+const stepSize = 30 * 60 * 1000; // 30 minutes in milliseconds
 
-   for (
-   let currentTime = timeMin.getTime();
-   currentTime < timeMax.getTime() && availableSlots.length < 5;
-   currentTime += stepSize
- ) {
+for (
+  let currentTime = timeMin.getTime();
+  currentTime < timeMax.getTime() && availableSlots.length < 5;
+  currentTime += stepSize
+) {
   const slotStart = new Date(currentTime);
   const slotEnd = new Date(currentTime + slotDuration);
 
@@ -107,11 +107,12 @@ export async function POST(req) {
 
   if (isAvailable) {
     availableSlots.push({
-      start: slotStart.toISOString(),
-      end: slotEnd.toISOString(),
+      start: slotStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
+      end: slotEnd.toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
     });
   }
 }
+
 
 
       return new Response(
