@@ -11,7 +11,7 @@
   - Optional Friday exclusion
   - US holidays automatically blocked
 - **Results**: Shows up to 5 best available time slots
-- **Have some culture with your availabilites**: Each search includes a randomly selected literary quote (mostly)
+- **Each search result includes a randomly selected literary**
 
 ## Requirements
 
