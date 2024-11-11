@@ -3,15 +3,15 @@
 ## Features
 
 - **Smart Scheduling**: Find available meeting times across multiple attendees
-- **Flexible Time Ranges**: Search next hour, week, or month
-- **Customizable Duration**: Choose between 15, 30, or 60-minute meetings
-- **Work-Life Balance**: 
+- **Time Ranges**: Search next hour, week, or month
+- **Meeting Duration**: Choose between 15, 30, or 60-minute meetings
+- **Optimizations**: 
   - Business hours only (9 AM - 5 PM)
   - Weekend-free scheduling
   - Optional Friday exclusion
   - US holidays automatically blocked
-- **Maximum Efficiency**: Shows up to 5 best available time slots
-- **Quote Generator**: Each search includes a randomly selected time-themed quote
+- **Results**: Shows up to 5 best available time slots
+- **Have some culture with your availabilites**: Each search includes a randomly selected literary quote (mostly)
 
 ## Requirements
 
