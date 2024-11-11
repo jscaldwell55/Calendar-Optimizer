@@ -10,8 +10,13 @@
   - Weekend-free scheduling
   - Optional Friday exclusion
   - US holidays automatically blocked
-- **Results**: Shows up to 5 best available time slots
-- **Each search result includes a randomly selected literary**
+  - Morning slots (9-11 AM) get highest priority
+  - Earlier in week gets higher priority (Monday > Tuesday > etc.)
+  - Scores combine time of day and day of week preferences, and determine which availabilities are included in 
+    the results
+  - Still respects all existing constraints (business hours, weekends, etc.)
+- **Results**: Shows up to 5
+- **Each search result includes a randomly selected quote**
 
 ## Requirements
 
