@@ -72,55 +72,51 @@ export async function POST(req) {
         }))
         .sort((a, b) => a.start.getTime() - b.start.getTime());
 
-   // Find available slots
-const availableSlots = [];
-const slotDuration = duration * 60 * 1000; // convert duration from minutes to milliseconds
-const stepSize = 30 * 60 * 1000; // 30 minutes in milliseconds
+      // Find available slots
+      const availableSlots = [];
+      const slotDuration = duration * 60 * 1000;
+      const stepSize = 30 * 60 * 1000;
 
-for (
-  let currentTime = timeMin.getTime();
-  currentTime < timeMax.getTime() && availableSlots.length < 5;
-  currentTime += stepSize
-) {
-  const slotStart = new Date(currentTime);
-  const slotEnd = new Date(currentTime + slotDuration);
+      for (
+        let currentTime = timeMin.getTime();
+        currentTime < timeMax.getTime() && availableSlots.length < 5;
+        currentTime += stepSize
+      ) {
+        const slotStart = new Date(currentTime);
+        const slotEnd = new Date(currentTime + slotDuration);
 
-  // Skip non-working hours (before 9 AM and after 5 PM)
-  const hours = slotStart.getHours();
-  if (hours < 9 || hours >= 17) {
-    continue; // Skip this slot if it’s outside of working hours
-  }
+        // Skip non-working hours
+        const hours = slotStart.getHours();
+        if (hours < 9 || hours >= 17) continue;
 
-  // Skip weekends
-  const day = slotStart.getDay();
-  if (day === 0 || day === 6) continue;
+        // Skip weekends
+        const day = slotStart.getDay();
+        if (day === 0 || day === 6) continue;
 
-  // Skip Fridays if excluded
-  if (preferences.noFridays && day === 5) continue;
+        // Skip Fridays if excluded
+        if (preferences.noFridays && day === 5) continue;
 
-  // Check if the slot overlaps with any busy periods
-  const isAvailable = !busyPeriods.some(busy => 
-    isWithinInterval(slotStart, { start: busy.start, end: busy.end }) ||
-    isWithinInterval(slotEnd, { start: busy.start, end: busy.end }) ||
-    (slotStart <= busy.start && slotEnd >= busy.end)
-  );
+        const isAvailable = !busyPeriods.some(busy => 
+          isWithinInterval(slotStart, { start: busy.start, end: busy.end }) ||
+          isWithinInterval(slotEnd, { start: busy.start, end: busy.end }) ||
+          (slotStart <= busy.start && slotEnd >= busy.end)
+        );
 
-if (isAvailable) {
-  availableSlots.push({
-    start: slotStart.toLocaleString('en-US', { 
-      hour: 'numeric', 
-      minute: 'numeric', 
-      hour12: true 
-    }),
-    end: slotEnd.toLocaleString('en-US', { 
-      hour: 'numeric', 
-      minute: 'numeric', 
-      hour12: true 
-    }),
-  });
-}
-
-
+        if (isAvailable) {
+          availableSlots.push({
+            start: slotStart.toLocaleString('en-US', { 
+              hour: 'numeric', 
+              minute: 'numeric', 
+              hour12: true 
+            }),
+            end: slotEnd.toLocaleString('en-US', { 
+              hour: 'numeric', 
+              minute: 'numeric', 
+              hour12: true 
+            }),
+          });
+        }
+      }
 
       return new Response(
         JSON.stringify({
@@ -133,7 +129,6 @@ if (isAvailable) {
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
       );
-
     } catch (calendarError) {
       console.error('Calendar API error:', calendarError);
       return new Response(
@@ -144,7 +139,6 @@ if (isAvailable) {
         { status: 500, headers: { 'Content-Type': 'application/json' } }
       );
     }
-
   } catch (error) {
     console.error('General error:', error);
     return new Response(
