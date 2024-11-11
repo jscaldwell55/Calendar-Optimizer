@@ -105,12 +105,19 @@ for (
     (slotStart <= busy.start && slotEnd >= busy.end)
   );
 
-  if (isAvailable) {
-    availableSlots.push({
-      start: slotStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
-      end: slotEnd.toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
-    });
-  }
+if (isAvailable) {
+  availableSlots.push({
+    start: slotStart.toLocaleString('en-US', { 
+      hour: 'numeric', 
+      minute: 'numeric', 
+      hour12: true 
+    }),
+    end: slotEnd.toLocaleString('en-US', { 
+      hour: 'numeric', 
+      minute: 'numeric', 
+      hour12: true 
+    }),
+  });
 }
 
 
