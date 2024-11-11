@@ -72,45 +72,47 @@ export async function POST(req) {
         }))
         .sort((a, b) => a.start.getTime() - b.start.getTime());
 
-      // Find available slots
-      const availableSlots = [];
-      const slotDuration = duration * 60 * 1000;
-      const stepSize = 30 * 60 * 1000;
+    // Find available slots
+    const availableSlots = [];
+    const slotDuration = duration * 60 * 1000; // convert duration from minutes to milliseconds
+    const stepSize = 30 * 60 * 1000; // 30 minutes in milliseconds
 
-      for (
-        let currentTime = timeMin.getTime();
-        currentTime < timeMax.getTime() && availableSlots.length < 5;
-        currentTime += stepSize
-      ) {
-        const slotStart = new Date(currentTime);
-        const slotEnd = new Date(currentTime + slotDuration);
+   for (
+   let currentTime = timeMin.getTime();
+   currentTime < timeMax.getTime() && availableSlots.length < 5;
+   currentTime += stepSize
+ ) {
+  const slotStart = new Date(currentTime);
+  const slotEnd = new Date(currentTime + slotDuration);
 
-       // Skip non-working hours (before 9 AM and after 5 PM)
-       const hours = slotStart.getHours(); // returns an integer from 0 to 23
-       if (hours < 9 || hours >= 17)
-       continue; // Skip the current iteration and move to the next time slot
+  // Skip non-working hours (before 9 AM and after 5 PM)
+  const hours = slotStart.getHours();
+  if (hours < 9 || hours >= 17) {
+    continue; // Skip this slot if it’s outside of working hours
+  }
 
-    
-        // Skip weekends
-        const day = slotStart.getDay();
-        if (day === 0 || day === 6) continue;
+  // Skip weekends
+  const day = slotStart.getDay();
+  if (day === 0 || day === 6) continue;
 
-        // Skip Fridays if excluded
-        if (preferences.noFridays && day === 5) continue;
+  // Skip Fridays if excluded
+  if (preferences.noFridays && day === 5) continue;
 
-        const isAvailable = !busyPeriods.some(busy => 
-          isWithinInterval(slotStart, { start: busy.start, end: busy.end }) ||
-          isWithinInterval(slotEnd, { start: busy.start, end: busy.end }) ||
-          (slotStart <= busy.start && slotEnd >= busy.end)
-        );
+  // Check if the slot overlaps with any busy periods
+  const isAvailable = !busyPeriods.some(busy => 
+    isWithinInterval(slotStart, { start: busy.start, end: busy.end }) ||
+    isWithinInterval(slotEnd, { start: busy.start, end: busy.end }) ||
+    (slotStart <= busy.start && slotEnd >= busy.end)
+  );
 
-        if (isAvailable) {
-          availableSlots.push({
-            start: slotStart.toISOString(),
-            end: slotEnd.toISOString(),
-          });
-        }
-      }
+  if (isAvailable) {
+    availableSlots.push({
+      start: slotStart.toISOString(),
+      end: slotEnd.toISOString(),
+    });
+  }
+}
+
 
       return new Response(
         JSON.stringify({
