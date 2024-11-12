@@ -17,11 +17,11 @@ import {
   format,
   addMinutes
 } from 'date-fns';
-import { formatInTimeZone, zonedTimeToUtc } from 'date-fns-tz';
+import { utcToZonedTime } from 'date-fns-tz';
 
 const BUSINESS_START_HOUR = 9;
 const BUSINESS_END_HOUR = 17;
-const MAX_SUGGESTIONS = 5; // Changed to 5
+const MAX_SUGGESTIONS = 5;
 
 // US Holidays 2024
 const US_HOLIDAYS_2024 = [
@@ -37,7 +37,6 @@ const US_HOLIDAYS_2024 = [
   new Date('2024-12-25'), // Christmas Day
 ];
 
-// Time-themed quotes (using your original ones)
 const timeQuotes = [
   "Tell me, what is it you plan to do with your one wild and precious life?",
   "For every thing there is a season, and a time to every purpose under heaven.",
@@ -48,7 +47,7 @@ const timeQuotes = [
 
 // Helper function for 12-hour time format
 function formatAMPM(date, timezone) {
-  const localDate = new Date(formatInTimeZone(date, timezone, "yyyy-MM-dd'T'HH:mm:ssXXX"));
+  const localDate = utcToZonedTime(date, timezone);
   let hours = localDate.getHours();
   let minutes = localDate.getMinutes();
   const ampm = hours >= 12 ? 'pm' : 'am';
@@ -63,13 +62,12 @@ function isHoliday(date) {
   return US_HOLIDAYS_2024.some(holiday => isSameDay(date, holiday));
 }
 
-// Helper to get the start of next business day at 9 AM in user's timezone
+// Helper to get the start of next business day at 9 AM
 function getNextBusinessDayStart(timezone) {
-  const now = new Date();
-  const currentHour = parseInt(formatInTimeZone(now, timezone, 'H'));
+  let baseDate = startOfDay(new Date());
+  const localDate = utcToZonedTime(baseDate, timezone);
   
-  let baseDate = startOfDay(now);
-  if (currentHour >= BUSINESS_END_HOUR) {
+  if (localDate.getHours() >= BUSINESS_END_HOUR) {
     baseDate = addDays(baseDate, 1);
   }
   
@@ -78,8 +76,7 @@ function getNextBusinessDayStart(timezone) {
     baseDate = addDays(baseDate, 1);
   }
   
-  const businessStart = `${format(baseDate, 'yyyy-MM-dd')}T09:00:00`;
-  return zonedTimeToUtc(businessStart, timezone);
+  return setMinutes(setHours(baseDate, BUSINESS_START_HOUR), 0);
 }
 
 export async function POST(req) {
@@ -103,7 +100,7 @@ export async function POST(req) {
       '30': 30,
       '60': 60
     };
-    const durationMinutes = durationMap[duration] || 30; // Default to 30 if invalid
+    const durationMinutes = durationMap[duration] || 30;
 
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
@@ -164,8 +161,11 @@ export async function POST(req) {
     while (availableSlots.length < MAX_SUGGESTIONS && currentTime < timeMax) {
       const slotEnd = addMinutes(currentTime, durationMinutes);
       
-      const currentHour = parseInt(formatInTimeZone(currentTime, timezone, 'H'));
-      const endHour = parseInt(formatInTimeZone(slotEnd, timezone, 'H'));
+      // Convert to local time for hour checking
+      const localTime = utcToZonedTime(currentTime, timezone);
+      const localEndTime = utcToZonedTime(slotEnd, timezone);
+      const currentHour = localTime.getHours();
+      const endHour = localEndTime.getHours();
 
       // Skip if outside business hours
       if (currentHour < BUSINESS_START_HOUR || currentHour >= BUSINESS_END_HOUR || 
@@ -175,20 +175,20 @@ export async function POST(req) {
       }
 
       // Skip weekends
-      if (isWeekend(currentTime)) {
-        let daysToAdd = currentTime.getDay() === 6 ? 2 : 1;
+      if (isWeekend(localTime)) {
+        let daysToAdd = localTime.getDay() === 6 ? 2 : 1;
         currentTime = setMinutes(setHours(addDays(startOfDay(currentTime), daysToAdd), BUSINESS_START_HOUR), 0);
         continue;
       }
 
       // Skip holidays
-      if (isHoliday(currentTime)) {
+      if (isHoliday(localTime)) {
         currentTime = setMinutes(setHours(addDays(startOfDay(currentTime), 1), BUSINESS_START_HOUR), 0);
         continue;
       }
 
       // Skip Fridays if specified in preferences
-      if (preferences.noFridays && getDay(currentTime) === 5) {
+      if (preferences.noFridays && localTime.getDay() === 5) {
         currentTime = setMinutes(setHours(addDays(startOfDay(currentTime), 3), BUSINESS_START_HOUR), 0);
         continue;
       }
@@ -205,7 +205,7 @@ export async function POST(req) {
           start: currentTime.toISOString(),
           end: slotEnd.toISOString(),
           localTimes: [{
-            dayOfWeek: formatInTimeZone(currentTime, timezone, 'EEEE'),
+            dayOfWeek: format(localTime, 'EEEE'),
             localStart: formatAMPM(currentTime, timezone),
             localEnd: formatAMPM(slotEnd, timezone)
           }]
@@ -216,8 +216,8 @@ export async function POST(req) {
       currentTime = addMinutes(currentTime, durationMinutes);
       
       // If we've passed business hours, move to next day
-      const newHour = parseInt(formatInTimeZone(currentTime, timezone, 'H'));
-      if (newHour >= BUSINESS_END_HOUR) {
+      const newLocalTime = utcToZonedTime(currentTime, timezone);
+      if (newLocalTime.getHours() >= BUSINESS_END_HOUR) {
         currentTime = setMinutes(setHours(addDays(startOfDay(currentTime), 1), BUSINESS_START_HOUR), 0);
       }
     }
