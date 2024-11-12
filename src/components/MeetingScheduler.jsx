@@ -1,5 +1,6 @@
 'use client';
 
+import SignOutButton from "@/components/SignOutButton";
 import { useState } from 'react';
 import { useSession, signIn } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
@@ -103,6 +104,7 @@ export default function MeetingScheduler() {
 
   return (
     <Card className="w-full max-w-3xl mx-auto mt-20 p-10 shadow-lg rounded-lg border border-gray-200">
+      <SignOutButton />  {/* Add it here */}
       <CardHeader className="text-center mb-8">
         <CardTitle className="text-4xl font-bold">Find Meeting Times <span className="text-xl">by Jay</span></CardTitle>
       </CardHeader>
