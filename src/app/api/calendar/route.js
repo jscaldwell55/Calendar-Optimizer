@@ -50,8 +50,8 @@ export async function POST(req) {
     const timeMin = new Date();
     let timeMax;
     switch (searchRange) {
-      case 'hour':
-        timeMax = addHours(timeMin, 1);
+      case 'day':
+        timeMax = addDay(timeMin, 1);
         break;
       case 'week':
         timeMax = addDays(timeMin, 7);
