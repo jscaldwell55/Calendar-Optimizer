@@ -93,7 +93,7 @@ const stepSize = 30 * 60 * 1000;
 
 for (
   let currentTime = timeMin.getTime();
-  currentTime < timeMax.getTime() && availableSlots.length < 5;
+  currentTime < timeMax.getTime() && availableSlots.length < 10;
   currentTime += stepSize
 ) {
   const slotStart = new Date(currentTime);
