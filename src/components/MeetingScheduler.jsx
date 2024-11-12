@@ -6,15 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-// Poetry collection
-const poetryLines = [
-  "Tell me, what is it you plan to do with your one wild and precious life?",
-  "For every thing there is a season, and a time to every purpose under heaven.",
-  "The world is too much with us; late and soon, Getting and spending, we lay waste our powers.",
-  "I have spread my dreams under your feet; Tread softly because you tread on my dreams.",
-  "Hope is the thing with feathers that perches in the soul, And sings the tune without the words, and never stops at all.",
-];
-
 export default function MeetingScheduler() {
   const { data: session, status } = useSession();
   const [attendees, setAttendees] = useState([]);
@@ -24,7 +15,7 @@ export default function MeetingScheduler() {
   const [isLoading, setIsLoading] = useState(false);
   const [suggestions, setSuggestions] = useState(null);
   const [error, setError] = useState(null);
-  const [poetryLine, setPoetryLine] = useState(poetryLines[Math.floor(Math.random() * poetryLines.length)]);
+
 
   const handleAttendeeInput = (e) => {
     setNewAttendee(e.target.value);
@@ -214,18 +205,7 @@ export default function MeetingScheduler() {
               </div>
             ))}
             
-            {/* Poetry Display */}
-            {poetryLine && (
-              <div className="mt-10 pt-10 border-t">
-                <p className="text-gray-600 text-center font-serif text-2xl italic leading-relaxed tracking-wide">
-                  "{poetryLine}"
-                </p>
-                <div className="mt-4 w-16 h-0.5 bg-gray-200 mx-auto"></div>
-              </div>
-            )}
-          </div>
-        )}
-
+        
         {/* Error Display */}
         {error && (
           <div className="text-red-500 text-center p-6 bg-red-50 rounded-lg mt-6 text-lg border-2 border-red-100">
