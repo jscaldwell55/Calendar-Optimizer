@@ -35,7 +35,7 @@ const usHolidays2024 = [
 const timeQuotes = [
   "The two most powerful warriors are patience and time. - Leo Tolstoy",
   "Time is the most valuable thing a man can spend. - Theophrastus",
-  "Time is the wisest counselor of all. - Pericles", 
+  "Time is the wisest counselor of all. - Pericles",
   "Time is the school in which we learn, time is the fire in which we burn. - Delmore Schwartz",
   "Time is the longest distance between two places. - Tennessee Williams"
 ];
@@ -159,12 +159,17 @@ export async function POST(req) {
 
     // Find available slots
     const availableSlots = [];
-    const slotDuration = duration * 60 * 1000;
+    const slotDuration = {
+      '30': 30 * 60 * 1000,
+      '60': 60 * 60 * 1000,
+      '1440': 24 * 60 * 60 * 1000,
+    }[duration.toString()] || 30 * 60 * 1000; // Default to 30 minutes if invalid duration
+
     let currentTime = timeMin;
 
-    while (availableSlots.length < 5 && currentTime < timeMax) {
+    while (availableSlots.length < 10 && currentTime < timeMax) {
       const slotStart = maxDate([currentTime, timeMin]); // Ensure slot starts within search range
-      const slotEnd = addMinutes(slotStart, duration);
+      const slotEnd = addMinutes(slotStart, slotDuration / 60 / 1000);
 
       console.log('Checking slot:', {
         start: slotStart.toLocaleString(),
@@ -195,14 +200,14 @@ export async function POST(req) {
         currentTime = addDays(slotStart, 1);
         currentTime = setHours(currentTime, 9);
         currentTime = setMinutes(currentTime, 0);
-        continue; 
+        continue;
       }
-      
-      // Skip Fridays if specified 
+
+      // Skip Fridays if specified
       if (preferences.noFridays && getDay(slotStart) === 5) {
         console.log('Friday detected, skipping due to preferences');
         currentTime = addDays(slotStart, 3);
-        currentTime = setHours(currentTime, 9);  
+        currentTime = setHours(currentTime, 9);
         currentTime = setMinutes(currentTime, 0);
         continue;
       }
@@ -224,15 +229,15 @@ export async function POST(req) {
       const isAvailable = !busyPeriods.some(busy => (
         isWithinInterval(slotStart, { start: busy.start, end: busy.end }) ||
         isWithinInterval(slotEnd, { start: busy.start, end: busy.end }) ||
-        (slotStart <= busy.start && slotEnd >= busy.end)  
+        (slotStart <= busy.start && slotEnd >= busy.end)
       ));
 
       if (isAvailable) {
         console.log('Available slot found:', {
-          start: slotStart.toISOString(), 
+          start: slotStart.toISOString(),
           end: slotEnd.toISOString()
         });
-        
+
         availableSlots.push({
           start: slotStart.toISOString(),
           end: slotEnd.toISOString(),  
@@ -249,24 +254,24 @@ export async function POST(req) {
       JSON.stringify({
         suggestions: availableSlots,
         quote: randomQuote,
-        metadata: {
+        metadata: {  
           searchRange,
           timeMin: timeMin.toISOString(),
-          timeMax: timeMax.toISOString(), 
-          timezone: 'system'  
+          timeMax: timeMax.toISOString(),
+          timezone: 'system'
         }
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
-    
+
   } catch (error) {
     console.error('General error:', error);
     return new Response(
       JSON.stringify({
-        error: 'Failed to process request',  
-        details: error.message
+        error: 'Failed to process request',
+        details: error.message  
       }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
-  }
+  }  
 }
