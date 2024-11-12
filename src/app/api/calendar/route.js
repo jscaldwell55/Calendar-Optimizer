@@ -123,96 +123,86 @@ export async function POST(req) {
 
     console.log('Busy periods found:', busyPeriods);
 
-    const availableSlots = [];
-    const slotDuration = duration * 60 * 1000;
-    const stepSize = 30 * 60 * 1000;
+   const availableSlots = [];
+const slotDuration = duration * 60 * 1000;
+const stepSize = 30 * 60 * 1000;
 
-    // Helper function to check if time is within business hours (9 AM to 5 PM)
-    const isWithinBusinessHours = (date) => {
-      const hours = date.getHours();
-      const minutes = date.getMinutes();
-      return (hours === 9 && minutes >= 0) || 
-             (hours > 9 && hours < 17) || 
-             (hours === 17 && minutes === 0);
-    };
+let currentTime = timeMin.getTime();
+while (currentTime < timeMax.getTime() && availableSlots.length < 5) {
+  const slotStart = new Date(currentTime);
+  const slotEnd = new Date(currentTime + slotDuration);
 
-    // Start checking from timeMin
-    let currentTime = timeMin.getTime();
-    while (currentTime < timeMax.getTime() && availableSlots.length < 10) {
-      const slotStart = new Date(currentTime);
-      const slotEnd = new Date(currentTime + slotDuration);
+  console.log('Checking slot:', {
+    start: slotStart.toLocaleString(),
+    end: slotEnd.toLocaleString()
+  });
 
-      console.log('Checking slot:', {
-        start: slotStart.toLocaleString(),
-        end: slotEnd.toLocaleString()
-      });
+  // Ensure slot is within business hours
+  if (!isWithinBusinessHours(slotStart) || !isWithinBusinessHours(slotEnd)) {
+    console.log('Slot outside business hours, skipping');
+    currentTime += stepSize;
+    continue;
+  }
 
-      // Ensure slot is within business hours
-      if (!isWithinBusinessHours(slotStart) || !isWithinBusinessHours(slotEnd)) {
-        console.log('Slot outside business hours, skipping');
-        currentTime += stepSize;
-        continue;
-      }
+  // Skip weekends
+  if (isWeekend(slotStart)) {
+    console.log('Weekend detected, moving to next business day');
+    currentTime = startOfDay(addDays(slotStart, 1));
+    currentTime = setHours(new Date(currentTime), 9).getTime();
+    continue;
+  }
 
-      // Skip weekends
-      if (isWeekend(slotStart)) {
-        console.log('Weekend detected, moving to next business day');
-        currentTime = startOfDay(addDays(slotStart, 1));
-        currentTime = setHours(new Date(currentTime), 9).getTime();
-        continue;
-      }
+  // Skip holidays
+  if (usHolidays2024.some(holiday => isSameDay(slotStart, holiday))) {
+    console.log('Holiday detected, moving to next business day');
+    currentTime = startOfDay(addDays(slotStart, 1));
+    currentTime = setHours(new Date(currentTime), 9).getTime();
+    continue;
+  }
 
-      // Skip holidays
-      if (usHolidays2024.some(holiday => isSameDay(slotStart, holiday))) {
-        console.log('Holiday detected, moving to next business day');
-        currentTime = startOfDay(addDays(slotStart, 1));
-        currentTime = setHours(new Date(currentTime), 9).getTime();
-        continue;
-      }
+  // Skip Fridays if specified
+  if (preferences.noFridays && getDay(slotStart) === 5) {
+    console.log('Friday detected, skipping due to preferences');
+    currentTime = startOfDay(addDays(slotStart, 1));
+    currentTime = setHours(new Date(currentTime), 9).getTime();
+    continue;
+  }
 
-      // Skip Fridays if specified
-      if (preferences.noFridays && getDay(slotStart) === 5) {
-        console.log('Friday detected, skipping due to preferences');
-        currentTime = startOfDay(addDays(slotStart, 1));
-        currentTime = setHours(new Date(currentTime), 9).getTime();
-        continue;
-      }
+  // Skip all-day events
+  const isAllDayEvent = allDayEvents.some(event => {
+    const eventStart = startOfDay(event.start);
+    const eventEnd = startOfDay(event.end);
+    return slotStart >= eventStart && slotStart < eventEnd;
+  });
 
-      // Skip all-day events
-      const isAllDayEvent = allDayEvents.some(event => {
-        const eventStart = startOfDay(event.start);
-        const eventEnd = startOfDay(event.end);
-        return slotStart >= eventStart && slotStart < eventEnd;
-      });
+  if (isAllDayEvent) {
+    console.log('All-day event detected, moving to next day');
+    currentTime = startOfDay(addDays(slotStart, 1));
+    currentTime = setHours(new Date(currentTime), 9).getTime();
+    continue;
+  }
 
-      if (isAllDayEvent) {
-        console.log('All-day event detected, moving to next day');
-        currentTime = startOfDay(addDays(slotStart, 1));
-        currentTime = setHours(new Date(currentTime), 9).getTime();
-        continue;
-      }
+  // Check against busy periods
+  const isAvailable = !busyPeriods.some(busy => (
+    (slotStart >= busy.start && slotStart < busy.end) ||
+    (slotEnd > busy.start && slotEnd <= busy.end) ||
+    (slotStart <= busy.start && slotEnd >= busy.end)
+  ));
 
-      // Check against busy periods
-      const isAvailable = !busyPeriods.some(busy => (
-        (slotStart >= busy.start && slotStart < busy.end) ||
-        (slotEnd > busy.start && slotEnd <= busy.end) ||
-        (slotStart <= busy.start && slotEnd >= busy.end)
-      ));
+  if (isAvailable) {
+    console.log('Available slot found:', {
+      start: slotStart.toLocaleString(),
+      end: slotEnd.toLocaleString()
+    });
+    
+    availableSlots.push({
+      start: slotStart.toISOString(),
+      end: slotEnd.toISOString(),
+    });
+  }
 
-      if (isAvailable) {
-        console.log('Available slot found:', {
-          start: slotStart.toLocaleString(),
-          end: slotEnd.toLocaleString()
-        });
-        
-        availableSlots.push({
-          start: slotStart.toISOString(),
-          end: slotEnd.toISOString(),
-        });
-      }
-
-      currentTime += stepSize;
-    }
+  currentTime += stepSize;
+}
 
     return new Response(
       JSON.stringify({
