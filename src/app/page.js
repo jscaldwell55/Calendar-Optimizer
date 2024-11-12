@@ -17,7 +17,6 @@ const POEMS = [
   "I should like to bury something precious in every place where I've been happy and then, when I'm old and ugly and miserable, I could come back and dig it up and remember. - Evelyn Waugh",
   "Mortal as I am, I know that I am born for a day. But when I follow at my pleasure the serried multitude of the stars in their circular course, my feet no longer touch the earth. - Ptolemy",
   "If you are lucky enough to have lived in Paris as a young man, then wherever you go for the rest of your life, it stays with you, for Paris is a moveable feast. - Ernest Hemingway",
-  "The first draft of anything is shit. - Ernest Hemingway",
   "A middleman’s business is to make himself a necessary evil. - William Gibson",
   "Some work of noble note, may yet be done, not unbecoming men that strove with Gods. - Tennyson.",
   "No. I'm in touch with humanity. - Patrick Bateman",
@@ -192,7 +191,7 @@ export default function Home() {
                   value={searchRange}
                   onChange={(e) => setSearchRange(e.target.value)}
                 >
-                  <option value="hour">1 Hour</option>
+                  <option value="day">1 Day</option>
                   <option value="week">1 Week</option>
                   <option value="month">1 Month</option>
                 </select>
