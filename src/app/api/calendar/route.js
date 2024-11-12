@@ -1,9 +1,6 @@
-Certainly! Here's the updated code with the specified time values and ensuring the days are handled correctly:
-
-```javascript
 import { google } from 'googleapis';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '../app/[...nextauth]/route';
+import { authOptions } from '../auth/[...nextauth]/route';
 import { addDays, addHours, addMonths, parseISO, isWithinInterval, isWeekend, getDay } from 'date-fns';
 
 // Define US holidays in 2024
@@ -174,24 +171,3 @@ export async function POST(req) {
     );
   }
 }
-```
-
-Here are the key changes:
-
-1. Added `usHolidays2024` array to define the US holidays in 2024.
-2. Updated the time range checks to use business hours (9 AM - 5 PM) by comparing the `slotStartHours` and `slotEndHours` with the desired range.
-3. Added checks to exclude weekends using the `isWeekend` function from `date-fns`.
-4. Added a check to exclude US holidays in 2024 by comparing the `slotStart` with each holiday using the `isSameDay` function from `date-fns`.
-5. Updated the Friday exclusion check to use the `getDay` function from `date-fns` to determine if the `slotStart` falls on a Friday.
-6. Added a random time-themed quote to the response by selecting a random quote from the `timeQuotes` array.
-
-With these modifications, the code should now meet the specified requirements:
-
-- Business hours only (9 AM - 5 PM)
-- Excludes weekends, US holidays in 2024, and times when attendees are busy
-- Displays up to 5 available time slots
-- Includes a random time-themed quote with each search result
-
-Please note that you'll need to add more time-themed quotes to the `timeQuotes` array to provide a variety of quotes.
-
-Let me know if you have any further questions or if there's anything else I can assist you with!
