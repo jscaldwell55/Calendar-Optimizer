@@ -129,10 +129,8 @@ const isWithinBusinessHours = (date) => {
   return hours >= 9 && hours < 17; // 9 AM <= hours < 5 PM
 };
 
-
-
 // Adjust `timeMin` to start at the next available business hour if it's outside of 9 AM - 5 PM
-const currentHour = timeMin.getHours();
+const timeMin = currentHour.getHours();
 if (currentHour >= 17 || currentHour < 9) {
   // Move to the start of the next day at 9 AM
   timeMin = startOfDay(addDays(timeMin, 1));
