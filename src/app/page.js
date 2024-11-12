@@ -224,11 +224,7 @@ export default function Home() {
               ) : (
                 <p className="text-gray-600">No available times found. Try different parameters.</p>
               )}
-              {randomPoem && (
-                <div className="mt-8 p-4 bg-gray-50 rounded-md italic text-gray-600 text-center">
-                  {randomPoem}
-                </div>
-              )}
+            
             </div>
           )}
         </div>
