@@ -54,11 +54,11 @@ The app automatically filters out:
 - Built with Next.js
 - Google Calendar API integration
 - NextAuth.js for authentication
-- Server-side rendering for optimal performance
+- Server-side rendering 
 
 ## Deployment
 
-Hosted on Vercel for reliable access and performance.
+Hosted on Vercel 
 
 ## Local Development
 
