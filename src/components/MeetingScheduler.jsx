@@ -43,30 +43,41 @@ export default function MeetingScheduler() {
     setIsLoading(true);
     setError(null);
 
+    // Get timezone and log it
+    const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    console.log('User timezone:', userTimezone);
+
+    const requestBody = {
+      attendees,
+      searchRange,
+      duration,
+      preferences: {
+        noFridays: false
+      },
+      timezone: userTimezone // Explicitly set timezone
+    };
+
+    // Log the full request body
+    console.log('Request body:', requestBody);
+
     try {
       const response = await fetch('/api/meetings', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          attendees,
-          searchRange,
-          duration,
-          preferences: {
-            noFridays: false
-          },
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone // Move timezone to top level
-        }),
+        body: JSON.stringify(requestBody)
       });
 
       if (!response.ok) {
-        throw new Error('Failed to fetch meeting times');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to fetch meeting times');
       }
 
       const data = await response.json();
       setSuggestions(data.suggestions);
     } catch (err) {
+      console.error('Error details:', err);
       setError(err.message);
     } finally {
       setIsLoading(false);
