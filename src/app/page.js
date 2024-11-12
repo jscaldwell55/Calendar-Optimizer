@@ -3,20 +3,6 @@
 import { useSession, signIn } from 'next-auth/react';
 import { useState } from 'react';
 
-const POEMS = [
-  "Go, sir, gallop and don’t forget that the world was made in six days. You can ask me for anything but not time. - Napoleon ",
-  "I love you when you call me to admire, A jet's pink trail above the sunset fire. - Vladimir Nabokov",
-  "The King was not mad; he was just an eccentric living in a world of dreams. - said about Ludwig II of Bavaria by his cousin, Elizabeth of Autria",
-  "And as I sat there, brooding on the old, unknown world, I thought of Gatsby’s wonder when he first picked out the green light at the end of Daisy’s dock. - F Scott Fitzgerald.",
-  "I dare do all that may become a man; who dares do more is none. - Shakespeare ",
-  "I should like to bury something precious in every place where I've been happy and then, when I'm old and ugly and miserable, I could come back and dig it up and remember. - Evelyn Waugh",
-  "Mortal as I am, I know that I am born for a day. But when I follow at my pleasure the serried multitude of the stars in their circular course, my feet no longer touch the earth. - Ptolemy",
-  "If you are lucky enough to have lived in Paris as a young man, then wherever you go for the rest of your life, it stays with you, for Paris is a moveable feast. - Ernest Hemingway",
-  "A middleman’s business is to make himself a necessary evil. - William Gibson",
-  "Some work of noble note, may yet be done, not unbecoming men that strove with Gods. - Tennyson.",
-  "No. I'm in touch with humanity. - Patrick Bateman",
-];
-
 export default function Home() {
   const { data: session, status } = useSession();
   const [attendees, setAttendees] = useState('');
