@@ -1,7 +1,7 @@
 import { google } from 'googleapis';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]/route';
-import { addDays, addWeek, addMonths, parseISO, isWithinInterval, isWeekend, getDay, isSameDay } from 'date-fns';
+import { addDays, addWeeks, addMonths, parseISO, isWithinInterval, isWeekend, getDay, isSameDay } from 'date-fns';
 
 // Define US holidays in 2024
 const usHolidays2024 = [
@@ -50,11 +50,11 @@ export async function POST(req) {
     const timeMin = new Date();
     let timeMax;
     switch (searchRange) {
-      case 'day':
-        timeMax = addDay(timeMin, 1);
+      case 'days':
+        timeMax = addDays(timeMin, 1);
         break;
-      case 'week':
-        timeMax = addWeek(timeMin, 1);
+      case 'weeks':
+        timeMax = addWeeks(timeMin, 1);
         break;
       case 'month':
         timeMax = addMonths(timeMin, 1);
