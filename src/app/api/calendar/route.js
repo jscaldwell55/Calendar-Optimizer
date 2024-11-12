@@ -59,6 +59,9 @@ export async function POST(req) {
       case 'month':
         timeMax = addMonths(timeMin, 1);
         break;
+        default:
+        timeMax = addDays(timeMin, 1);
+
     }
 
     try {
