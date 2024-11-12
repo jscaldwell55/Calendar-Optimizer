@@ -73,42 +73,48 @@ export async function POST(req) {
         .sort((a, b) => a.start.getTime() - b.start.getTime());
 
       // Find available slots
-      const availableSlots = [];
-      const slotDuration = duration * 60 * 1000;
-      const stepSize = 30 * 60 * 1000;
+const availableSlots = [];
+const slotDuration = duration * 60 * 1000;
+const stepSize = 30 * 60 * 1000;
 
-      for (
-        let currentTime = timeMin.getTime();
-        currentTime < timeMax.getTime() && availableSlots.length < 5;
-        currentTime += stepSize
-      ) {
-        const slotStart = new Date(currentTime);
-        const slotEnd = new Date(currentTime + slotDuration);
+for (
+  let currentTime = timeMin.getTime();
+  currentTime < timeMax.getTime() && availableSlots.length < 5;
+  currentTime += stepSize
+) 
+  const slotStart = new Date(currentTime);
+  const slotEnd = new Date(currentTime + slotDuration);
 
-        // Skip non-working hours
-        const hours = slotStart.getHours();
-        if (hours < 9 || hours >= 17) continue;
+  // Convert slot start time to 12-hour format with AM/PM
+  const slotStartHours = slotStart.getHours();
+  const slotStartMinutes = slotStart.getMinutes();
+  const slotStartAmPm = slotStartHours >= 12 ? 'PM' : 'AM';
+  const slotStartHours12 = slotStartHours % 12 || 12;
+  const slotStartTime = `${slotStartHours12}:${slotStartMinutes.toString().padStart(2, '0')} ${slotStartAmPm}`;
 
-        // Skip weekends
-        const day = slotStart.getDay();
-        if (day === 0 || day === 6) continue;
+  // Skip non-working hours (before 9:00 AM or after 5:00 PM)
+  if (slotStartTime < '9:00 AM' || slotStartTime >= '5:00 PM') continue;
 
-        // Skip Fridays if excluded
-        if (preferences.noFridays && day === 5) continue;
+  // Skip weekends
+  const day = slotStart.getDay();
+  if (day === 0 || day === 6) continue;
 
-        const isAvailable = !busyPeriods.some(busy => 
-          isWithinInterval(slotStart, { start: busy.start, end: busy.end }) ||
-          isWithinInterval(slotEnd, { start: busy.start, end: busy.end }) ||
-          (slotStart <= busy.start && slotEnd >= busy.end)
-        );
+  // Skip Fridays if excluded
+  if (preferences.noFridays && day === 5) continue;
 
-        if (isAvailable) {
-          availableSlots.push({
-            start: slotStart.toISOString(),
-            end: slotEnd.toISOString(),
-          });
-        }
-      }
+  const isAvailable = !busyPeriods.some(busy =>
+    isWithinInterval(slotStart, { start: busy.start, end: busy.end }) ||
+    isWithinInterval(slotEnd, { start: busy.start, end: busy.end }) ||
+    (slotStart <= busy.start && slotEnd >= busy.end)
+  );
+
+  if (isAvailable) {
+    availableSlots.push({
+      start: slotStart.toISOString(),
+      end: slotEnd.toISOString(),
+    });
+  }
+}
 
       return new Response(
         JSON.stringify({
