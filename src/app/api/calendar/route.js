@@ -17,7 +17,7 @@ import {
   format,
   addMinutes
 } from 'date-fns';
-import { utcToZonedTime } from 'date-fns-tz';
+import { utcToZonedTime, zonedTimeToUtc } from 'date-fns-tz';
 
 const BUSINESS_START_HOUR = 9;
 const BUSINESS_END_HOUR = 17;
@@ -35,7 +35,7 @@ const US_HOLIDAYS_2024 = [
   new Date('2024-11-11'), // Veterans Day
   new Date('2024-11-28'), // Thanksgiving Day
   new Date('2024-12-25'), // Christmas Day
-];
+].map(date => date.toISOString());
 
 const timeQuotes = [
   "Tell me, what is it you plan to do with your one wild and precious life?",
@@ -46,10 +46,10 @@ const timeQuotes = [
 ];
 
 // Helper function for 12-hour time format
-function formatAMPM(date, timezone) {
-  const localDate = utcToZonedTime(date, timezone);
-  let hours = localDate.getHours();
-  let minutes = localDate.getMinutes();
+function formatAMPM(isoString, timezone) {
+  const date = utcToZonedTime(new Date(isoString), timezone);
+  let hours = date.getHours();
+  let minutes = date.getMinutes();
   const ampm = hours >= 12 ? 'pm' : 'am';
   hours = hours % 12;
   hours = hours ? hours : 12;
@@ -58,25 +58,30 @@ function formatAMPM(date, timezone) {
 }
 
 // Helper to check if date is a holiday
-function isHoliday(date) {
-  return US_HOLIDAYS_2024.some(holiday => isSameDay(date, holiday));
+function isHoliday(date, timezone) {
+  const zonedDate = utcToZonedTime(date, timezone);
+  return US_HOLIDAYS_2024.some(holiday => 
+    isSameDay(zonedDate, utcToZonedTime(new Date(holiday), timezone))
+  );
 }
 
-// Helper to get the start of next business day at 9 AM
-function getNextBusinessDayStart(timezone) {
-  let baseDate = startOfDay(new Date());
-  const localDate = utcToZonedTime(baseDate, timezone);
-  
-  if (localDate.getHours() >= BUSINESS_END_HOUR) {
-    baseDate = addDays(baseDate, 1);
-  }
-  
-  // Skip weekends and holidays
-  while (isWeekend(baseDate) || isHoliday(baseDate)) {
-    baseDate = addDays(baseDate, 1);
-  }
-  
-  return setMinutes(setHours(baseDate, BUSINESS_START_HOUR), 0);
+// Helper to get start of business day in user's timezone
+function getBusinessDayStart(date, timezone) {
+  const zonedDate = utcToZonedTime(date, timezone);
+  const businessStart = setMinutes(setHours(startOfDay(zonedDate), BUSINESS_START_HOUR), 0);
+  return zonedTimeToUtc(businessStart, timezone);
+}
+
+// Helper to get next available business day
+function getNextBusinessDay(date, timezone) {
+  let nextDay = utcToZonedTime(date, timezone);
+  do {
+    nextDay = addDays(nextDay, 1);
+  } while (
+    isWeekend(nextDay) || 
+    isHoliday(zonedTimeToUtc(nextDay, timezone), timezone)
+  );
+  return zonedTimeToUtc(nextDay, timezone);
 }
 
 export async function POST(req) {
@@ -114,8 +119,15 @@ export async function POST(req) {
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
-    // Get start time (9 AM next business day)
-    const timeMin = getNextBusinessDayStart(timezone);
+    // Get current time in user's timezone
+    const now = new Date();
+    let timeMin = getBusinessDayStart(now, timezone);
+    const currentHour = utcToZonedTime(now, timezone).getHours();
+
+    // If current time is past business hours, move to next business day
+    if (currentHour >= BUSINESS_END_HOUR) {
+      timeMin = getBusinessDayStart(getNextBusinessDay(now, timezone), timezone);
+    }
 
     // Calculate search end time based on range
     let timeMax;
@@ -161,35 +173,34 @@ export async function POST(req) {
     while (availableSlots.length < MAX_SUGGESTIONS && currentTime < timeMax) {
       const slotEnd = addMinutes(currentTime, durationMinutes);
       
-      // Convert to local time for hour checking
-      const localTime = utcToZonedTime(currentTime, timezone);
-      const localEndTime = utcToZonedTime(slotEnd, timezone);
-      const currentHour = localTime.getHours();
-      const endHour = localEndTime.getHours();
+      // Convert to zoned time for checking hours
+      const zonedTime = utcToZonedTime(currentTime, timezone);
+      const zonedEndTime = utcToZonedTime(slotEnd, timezone);
 
       // Skip if outside business hours
-      if (currentHour < BUSINESS_START_HOUR || currentHour >= BUSINESS_END_HOUR || 
-          endHour < BUSINESS_START_HOUR || endHour > BUSINESS_END_HOUR) {
-        currentTime = setMinutes(setHours(addDays(startOfDay(currentTime), 1), BUSINESS_START_HOUR), 0);
+      if (zonedTime.getHours() < BUSINESS_START_HOUR || 
+          zonedTime.getHours() >= BUSINESS_END_HOUR ||
+          zonedEndTime.getHours() > BUSINESS_END_HOUR) {
+        currentTime = getBusinessDayStart(addDays(currentTime, 1), timezone);
         continue;
       }
 
       // Skip weekends
-      if (isWeekend(localTime)) {
-        let daysToAdd = localTime.getDay() === 6 ? 2 : 1;
-        currentTime = setMinutes(setHours(addDays(startOfDay(currentTime), daysToAdd), BUSINESS_START_HOUR), 0);
+      if (isWeekend(zonedTime)) {
+        const daysToAdd = zonedTime.getDay() === 6 ? 2 : 1;
+        currentTime = getBusinessDayStart(addDays(currentTime, daysToAdd), timezone);
         continue;
       }
 
       // Skip holidays
-      if (isHoliday(localTime)) {
-        currentTime = setMinutes(setHours(addDays(startOfDay(currentTime), 1), BUSINESS_START_HOUR), 0);
+      if (isHoliday(currentTime, timezone)) {
+        currentTime = getBusinessDayStart(addDays(currentTime, 1), timezone);
         continue;
       }
 
-      // Skip Fridays if specified in preferences
-      if (preferences.noFridays && localTime.getDay() === 5) {
-        currentTime = setMinutes(setHours(addDays(startOfDay(currentTime), 3), BUSINESS_START_HOUR), 0);
+      // Skip Fridays if specified
+      if (preferences.noFridays && zonedTime.getDay() === 5) {
+        currentTime = getBusinessDayStart(addDays(currentTime, 3), timezone);
         continue;
       }
 
@@ -201,13 +212,15 @@ export async function POST(req) {
       );
 
       if (isSlotAvailable) {
+        const isoStart = currentTime.toISOString();
+        const isoEnd = slotEnd.toISOString();
         availableSlots.push({
-          start: currentTime.toISOString(),
-          end: slotEnd.toISOString(),
+          start: isoStart,
+          end: isoEnd,
           localTimes: [{
-            dayOfWeek: format(localTime, 'EEEE'),
-            localStart: formatAMPM(currentTime, timezone),
-            localEnd: formatAMPM(slotEnd, timezone)
+            dayOfWeek: format(zonedTime, 'EEEE'),
+            localStart: formatAMPM(isoStart, timezone),
+            localEnd: formatAMPM(isoEnd, timezone)
           }]
         });
       }
@@ -215,10 +228,10 @@ export async function POST(req) {
       // Move to next slot
       currentTime = addMinutes(currentTime, durationMinutes);
       
-      // If we've passed business hours, move to next day
-      const newLocalTime = utcToZonedTime(currentTime, timezone);
-      if (newLocalTime.getHours() >= BUSINESS_END_HOUR) {
-        currentTime = setMinutes(setHours(addDays(startOfDay(currentTime), 1), BUSINESS_START_HOUR), 0);
+      // If we've passed business hours, move to next business day
+      const nextSlotHour = utcToZonedTime(currentTime, timezone).getHours();
+      if (nextSlotHour >= BUSINESS_END_HOUR) {
+        currentTime = getBusinessDayStart(addDays(currentTime, 1), timezone);
       }
     }
 
