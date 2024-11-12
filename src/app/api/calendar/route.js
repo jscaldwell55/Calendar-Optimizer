@@ -141,7 +141,6 @@ if (currentHour >= 17 || currentHour < 9) {
   timeMin = setMinutes(timeMin, 0);  // Set minutes to 0
 }
 
-
 // Calculate `timeMax` based on the search range
 let timeMax;
 switch (searchRange) {
@@ -167,6 +166,7 @@ let currentTime = timeMin.getTime();
 while (currentTime < timeMax.getTime() && availableSlots.length < 5) {
   const slotStart = new Date(currentTime);
   const slotEnd = new Date(currentTime + slotDuration);
+
 
   console.log('Checking slot:', {
     start: slotStart.toLocaleString(),
