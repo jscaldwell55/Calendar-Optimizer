@@ -21,7 +21,6 @@
 
 - Google Account (works with both @gmail.com and Google Workspace domains)
 - Calendar access permission
-- Web browser
 
 ## Time Slot Logic
 
