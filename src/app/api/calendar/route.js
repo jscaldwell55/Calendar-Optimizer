@@ -107,7 +107,7 @@ for (
 
   if (
     slotStartHours < 9 || 
-    (slotStartHours === 9 && slotStartMinutes < 0) ||
+    (slotStartHours === 9 && slotStartMinutes > 0) ||
     slotEndHours > 17 ||
     (slotEndHours === 17 && slotEndMinutes > 0)
   ) {
