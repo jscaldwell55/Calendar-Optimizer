@@ -15,14 +15,6 @@ const BUSINESS_START_HOUR = 9;  // 9 AM Local time
 const BUSINESS_END_HOUR = 17;   // 5 PM Local time
 const MAX_SUGGESTIONS = 5;
 
-const timeQuotes = [
-  "Tell me, what is it you plan to do with your one wild and precious life?",
-  "For every thing there is a season, and a time to every purpose under heaven.",
-  "The world is too much with us; late and soon, Getting and spending, we lay waste our powers.",
-  "I have spread my dreams under your feet; Tread softly because you tread on my dreams.",
-  "Hope is the thing with feathers that perches in the soul, And sings the tune without the words, and never stops at all.",
-];
-
 // Helper to get UTC hours offset for a timezone
 function getTimezoneOffset(timezone) {
   const date = new Date();
@@ -204,13 +196,9 @@ export async function POST(req) {
       currentTime = new Date(currentTime.getTime() + durationMinutes * 60000);
     }
 
-    // Select a random quote
-    const randomQuote = timeQuotes[Math.floor(Math.random() * timeQuotes.length)];
-
     return new Response(
       JSON.stringify({
         suggestions: availableSlots,
-        quote: randomQuote
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
