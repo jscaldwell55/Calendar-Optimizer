@@ -2,16 +2,15 @@
 
 import React from 'react'
 import { signOut } from "next-auth/react"
-import { Button } from "@/components/ui/button"
 
 const SignOutButton = () => {
   return (
-    <Button
+    <button
       onClick={() => signOut({ callbackUrl: "/" })}
-      className="absolute top-4 right-4 bg-red-500 hover:bg-red-600 text-white"
+      className="px-4 py-2 text-sm text-white bg-red-500 rounded-md hover:bg-red-600 transition-colors"
     >
       Sign Out
-    </Button>
+    </button>
   )
 }
 
