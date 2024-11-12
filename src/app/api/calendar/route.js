@@ -1,7 +1,7 @@
 import { google } from 'googleapis';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]/route';
-import { addDays, addWeeks, addMonths, isWeekend, getDay, isSameDay, startOfDay, endOfDay } from 'date-fns';
+import { addDays, addWeeks, addMonths, isWeekend, getDay, isSameDay, startOfDay, endOfDay, setHours, setMinutes } from 'date-fns';
 
 // Define US holidays in 2024
 const usHolidays2024 = [
@@ -31,7 +31,6 @@ export async function POST(req) {
     const body = await req.json();
     const { attendees, searchRange, duration, preferences } = body;
     
-    // Set up OAuth2 client
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET
@@ -42,46 +41,48 @@ export async function POST(req) {
       refresh_token: session.refreshToken
     });
 
-    // Create calendar instance
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
     // Start from the next 30-minute increment
     const now = new Date();
-    const currentMinutes = now.getMinutes();
-    const nextSlotMinutes = Math.ceil(currentMinutes / 30) * 30;
-    const timeMin = new Date(now);
-    timeMin.setMinutes(nextSlotMinutes);
-    timeMin.setSeconds(0);
-    timeMin.setMilliseconds(0);
-
-    // If we're past 5 PM or before 9 AM, start from 9 AM next business day
-    if (timeMin.getHours() >= 17 || timeMin.getHours() < 9) {
-      timeMin.setDate(timeMin.getDate() + 1);
-      timeMin.setHours(9);
-      timeMin.setMinutes(0);
+    let timeMin = new Date(now);
+    
+    // Set to next 30-minute increment
+    timeMin = new Date(Math.ceil(timeMin.getTime() / (30 * 60 * 1000)) * (30 * 60 * 1000));
+    
+    // Convert hours to local time for comparison
+    const currentHour = timeMin.getHours();
+    
+    // If current time is outside business hours, move to next business day at 9 AM
+    if (currentHour >= 17 || currentHour < 9) {
+      timeMin = startOfDay(addDays(timeMin, 1));  // Move to start of next day
+      timeMin = setHours(timeMin, 9);  // Set to 9 AM
+      timeMin = setMinutes(timeMin, 0);  // Set to exact hour
     }
 
+    // Calculate timeMax based on search range
     let timeMax;
+    const timeMinDay = startOfDay(timeMin);
     switch (searchRange) {
       case 'day':
-        timeMax = addDays(startOfDay(new Date(timeMin)), 1);
+        timeMax = addDays(timeMinDay, 1);
         break;
       case 'week':
-        timeMax = addWeeks(startOfDay(new Date(timeMin)), 1);
+        timeMax = addWeeks(timeMinDay, 1);
         break;
       case 'month':
-        timeMax = addMonths(startOfDay(new Date(timeMin)), 1);
+        timeMax = addMonths(timeMinDay, 1);
         break;
       default:
-        timeMax = addDays(startOfDay(new Date(timeMin)), 1);
+        timeMax = addDays(timeMinDay, 1);
     }
 
-    console.log('Fetching all-day events between:', {
-      timeMin: startOfDay(timeMin).toISOString(),
-      timeMax: endOfDay(timeMax).toISOString()
+    console.log('Searching for available slots between:', {
+      timeMin: timeMin.toISOString(),
+      timeMax: timeMax.toISOString()
     });
 
-    // Get all-day events using the calendar instance
+    // Get all-day events
     const eventsResponse = await calendar.events.list({
       calendarId: 'primary',
       timeMin: startOfDay(timeMin).toISOString(),
@@ -90,20 +91,16 @@ export async function POST(req) {
       orderBy: 'startTime',
     });
 
-    console.log('Events response:', eventsResponse.data.items);
-
     const allDayEvents = eventsResponse.data.items
-      .filter(event => {
-        return event.start.date != null; // Check for all-day events
-      })
+      .filter(event => event.start.date != null)
       .map(event => ({
         start: new Date(event.start.date),
         end: new Date(event.end.date)
       }));
 
-    console.log('All-day events:', allDayEvents);
+    console.log('All-day events found:', allDayEvents);
 
-    // Get free/busy information using the same calendar instance
+    // Get free/busy information
     const freeBusy = await calendar.freebusy.query({
       requestBody: {
         timeMin: timeMin.toISOString(),
@@ -124,55 +121,74 @@ export async function POST(req) {
       }))
       .sort((a, b) => a.start.getTime() - b.start.getTime());
 
-    console.log('Busy periods:', busyPeriods);
+    console.log('Busy periods found:', busyPeriods);
 
     const availableSlots = [];
     const slotDuration = duration * 60 * 1000;
     const stepSize = 30 * 60 * 1000;
 
-    for (
-      let currentTime = timeMin.getTime();
-      currentTime < timeMax.getTime() && availableSlots.length < 10;
-      currentTime += stepSize
-    ) {
+    // Helper function to check if time is within business hours (9 AM to 5 PM)
+    const isWithinBusinessHours = (date) => {
+      const hours = date.getHours();
+      const minutes = date.getMinutes();
+      return (hours === 9 && minutes >= 0) || 
+             (hours > 9 && hours < 17) || 
+             (hours === 17 && minutes === 0);
+    };
+
+    // Start checking from timeMin
+    let currentTime = timeMin.getTime();
+    while (currentTime < timeMax.getTime() && availableSlots.length < 10) {
       const slotStart = new Date(currentTime);
       const slotEnd = new Date(currentTime + slotDuration);
 
-      // Skip times outside 9 AM - 5 PM
-      const hour = slotStart.getHours();
-      if (hour < 9 || hour >= 17) {
-        continue;
-      }
+      console.log('Checking slot:', {
+        start: slotStart.toLocaleString(),
+        end: slotEnd.toLocaleString()
+      });
 
-      // Skip if slot ends after 5 PM
-      if (slotEnd.getHours() >= 17) {
+      // Ensure slot is within business hours
+      if (!isWithinBusinessHours(slotStart) || !isWithinBusinessHours(slotEnd)) {
+        console.log('Slot outside business hours, skipping');
+        currentTime += stepSize;
         continue;
       }
 
       // Skip weekends
       if (isWeekend(slotStart)) {
+        console.log('Weekend detected, moving to next business day');
+        currentTime = startOfDay(addDays(slotStart, 1));
+        currentTime = setHours(new Date(currentTime), 9).getTime();
         continue;
       }
 
       // Skip holidays
       if (usHolidays2024.some(holiday => isSameDay(slotStart, holiday))) {
+        console.log('Holiday detected, moving to next business day');
+        currentTime = startOfDay(addDays(slotStart, 1));
+        currentTime = setHours(new Date(currentTime), 9).getTime();
         continue;
       }
 
       // Skip Fridays if specified
       if (preferences.noFridays && getDay(slotStart) === 5) {
+        console.log('Friday detected, skipping due to preferences');
+        currentTime = startOfDay(addDays(slotStart, 1));
+        currentTime = setHours(new Date(currentTime), 9).getTime();
         continue;
       }
 
       // Skip all-day events
       const isAllDayEvent = allDayEvents.some(event => {
         const eventStart = startOfDay(event.start);
-        const eventEnd = endOfDay(new Date(event.end.getTime() - 24 * 60 * 60 * 1000)); // Subtract one day from end date
-        return slotStart >= eventStart && slotStart <= eventEnd;
+        const eventEnd = startOfDay(event.end);
+        return slotStart >= eventStart && slotStart < eventEnd;
       });
 
       if (isAllDayEvent) {
-        console.log('Skipping slot due to all-day event:', slotStart.toISOString());
+        console.log('All-day event detected, moving to next day');
+        currentTime = startOfDay(addDays(slotStart, 1));
+        currentTime = setHours(new Date(currentTime), 9).getTime();
         continue;
       }
 
@@ -184,16 +200,18 @@ export async function POST(req) {
       ));
 
       if (isAvailable) {
-        console.log('Found available slot:', {
-          start: slotStart.toISOString(),
-          end: slotEnd.toISOString()
+        console.log('Available slot found:', {
+          start: slotStart.toLocaleString(),
+          end: slotEnd.toLocaleString()
         });
-
+        
         availableSlots.push({
           start: slotStart.toISOString(),
           end: slotEnd.toISOString(),
         });
       }
+
+      currentTime += stepSize;
     }
 
     return new Response(
