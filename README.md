@@ -7,7 +7,7 @@
 - Set meeting duration (15 min, 30 min, 1 hour) 
 - Optional: Exclude Fridays
 - Get up to 5 available meeting times
-- Signs out from Google automatically after 10 minutes of inactivity
+- Google Sign out button
 
 - **Optimizations**: 
 - Only checks 9 AM - 5 PM
