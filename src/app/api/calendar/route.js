@@ -44,7 +44,7 @@ export async function POST(req) {
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
     // Start from the next 30-minute increment
-    const now = new Date();
+    const currentDate = new Date();
     let timeMin = new Date(now);
     
     // Set to next 30-minute increment
