@@ -87,7 +87,6 @@ export default function Home() {
       }
 
       setResults(data.suggestions);
-      setRandomPoem(POEMS[Math.floor(Math.random() * POEMS.length)]);
       setError('');
     } catch (error) {
       console.error('Main error:', {
