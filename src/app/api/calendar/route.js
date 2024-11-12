@@ -1,7 +1,7 @@
 import { google } from 'googleapis';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]/route';
-import { addDays, addHours, addMonths, parseISO, isWithinInterval, isWeekend, getDay } from 'date-fns';
+import { addDays, addHours, addMonths, parseISO, isWithinInterval, isWeekend, getDay, isSameDay } from 'date-fns';
 
 // Define US holidays in 2024
 const usHolidays2024 = [
@@ -86,32 +86,32 @@ export async function POST(req) {
         }))
         .sort((a, b) => a.start.getTime() - b.start.getTime());
 
-      // Find available slots
-      const availableSlots = [];
-      const slotDuration = duration * 60 * 1000;
-      const stepSize = 30 * 60 * 1000;
+     // Find available slots
+const availableSlots = [];
+const slotDuration = duration * 60 * 1000;
+const stepSize = 30 * 60 * 1000;
 
-      for (
-        let currentTime = timeMin.getTime();
-        currentTime < timeMax.getTime() && availableSlots.length < 5;
-        currentTime += stepSize
-      ) {
-        const slotStart = new Date(currentTime);
-        const slotEnd = new Date(currentTime + slotDuration);
+for (
+  let currentTime = timeMin.getTime();
+  currentTime < timeMax.getTime() && availableSlots.length < 5;
+  currentTime += stepSize
+) {
+  const slotStart = new Date(currentTime);
+  const slotEnd = new Date(currentTime + slotDuration);
 
-        // Check if the slot falls within business hours (9 AM - 5 PM)
-        const slotStartHours = slotStart.getHours();
-        const slotEndHours = slotEnd.getHours();
-        if (slotStartHours < 9 || slotEndHours > 17) continue;
+  // Check if the slot falls within business hours (9 AM - 5 PM)
+  const slotStartHours = slotStart.getHours();
+  const slotEndHours = slotEnd.getHours();
+  if (slotStartHours < 9 || slotEndHours > 17) continue;
 
-        // Check if the slot falls on a weekend
-        if (isWeekend(slotStart)) continue;
+  // Check if the slot falls on a weekend
+  if (isWeekend(slotStart)) continue;
 
-        // Check if the slot falls on a US holiday in 2024
-        if (usHolidays2024.some(holiday => isSameDay(slotStart, holiday))) continue;
+  // Check if the slot falls on a US holiday in 2024
+  if (usHolidays2024.some(holiday => isSameDay(slotStart, holiday))) continue;
 
-        // Check if the slot falls on a Friday and Fridays are excluded
-        if (preferences.noFridays && getDay(slotStart) === 5) continue;
+  // Check if the slot falls on a Friday and Fridays are excluded
+  if (preferences.noFridays && getDay(slotStart) === 5) continue;
 
         const isAvailable = !busyPeriods.some(busy =>
           isWithinInterval(slotStart, { start: busy.start, end: busy.end }) ||
