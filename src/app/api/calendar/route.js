@@ -81,7 +81,7 @@ for (
   let currentTime = timeMin.getTime();
   currentTime < timeMax.getTime() && availableSlots.length < 5;
   currentTime += stepSize
-) 
+) {
   const slotStart = new Date(currentTime);
   const slotEnd = new Date(currentTime + slotDuration);
 
