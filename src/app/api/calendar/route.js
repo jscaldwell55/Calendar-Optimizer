@@ -19,8 +19,8 @@ const usHolidays2024 = [
 
 export async function POST(req) {
   try {
+    // Validate session and access token
     const session = await getServerSession(authOptions);
-    
     if (!session?.accessToken) {
       console.log('No access token found in session:', session);
       return new Response(
@@ -29,10 +29,11 @@ export async function POST(req) {
       );
     }
 
+    // Parse request body
     const body = await req.json();
     const { attendees, searchRange, duration, preferences } = body;
-
-    // Create OAuth2 client
+    
+    // Set up OAuth2 client
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET
@@ -43,28 +44,30 @@ export async function POST(req) {
       refresh_token: session.refreshToken
     });
 
-    // Create calendar client
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
-    // Set time range
+    // Set time range with corrected cases
     const timeMin = new Date();
     let timeMax;
     switch (searchRange) {
-      case 'days':
+      case 'day':
         timeMax = addDays(timeMin, 1);
         break;
-      case 'weeks':
+      case 'week':
         timeMax = addWeeks(timeMin, 1);
         break;
       case 'month':
         timeMax = addMonths(timeMin, 1);
         break;
-        default:
+      default:
         timeMax = addDays(timeMin, 1);
-
     }
 
+    // Get timezone from preferences or system default
+    const userTimezone = preferences.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+
     try {
+      // Query for busy periods
       const freeBusy = await calendar.freebusy.query({
         requestBody: {
           timeMin: timeMin.toISOString(),
@@ -73,12 +76,13 @@ export async function POST(req) {
             { id: 'primary' },
             ...attendees.map(email => ({ id: email }))
           ],
-          timeZone: preferences.timezone || 'system',
+          timeZone: userTimezone,
         },
       });
 
       console.log('FreeBusy response:', JSON.stringify(freeBusy.data, null, 2));
 
+      // Process and sort busy periods
       const busyPeriods = Object.values(freeBusy.data.calendars)
         .flatMap(calendar => calendar.busy || [])
         .map(period => ({
@@ -87,50 +91,91 @@ export async function POST(req) {
         }))
         .sort((a, b) => a.start.getTime() - b.start.getTime());
 
- // Find available slots
-const availableSlots = [];
-const slotDuration = duration * 60 * 1000;
-const stepSize = 30 * 60 * 1000;
+      // Find available slots
+      const availableSlots = [];
+      const slotDuration = duration * 60 * 1000; // Convert minutes to milliseconds
+      const stepSize = 30 * 60 * 1000; // 30-minute intervals
 
-for (
-  let currentTime = timeMin.getTime();
-  currentTime < timeMax.getTime() && availableSlots.length < 10;
-  currentTime += stepSize
-) {
-  const slotStart = new Date(currentTime);
-  const slotEnd = new Date(currentTime + slotDuration);
+      for (
+        let currentTime = timeMin.getTime();
+        currentTime < timeMax.getTime() && availableSlots.length < 10;
+        currentTime += stepSize
+      ) {
+        const slotStart = new Date(currentTime);
+        const slotEnd = new Date(currentTime + slotDuration);
 
-  // Check if the slot falls within business hours (9 AM - 5 PM)
-  const slotStartHours = slotStart.getHours();
-  const slotStartMinutes = slotStart.getMinutes();
-  const slotEndHours = slotEnd.getHours();
-  const slotEndMinutes = slotEnd.getMinutes();
+        // Convert times to user's timezone
+        const slotStartInTz = new Date(slotStart.toLocaleString('en-US', { timeZone: userTimezone }));
+        const slotEndInTz = new Date(slotEnd.toLocaleString('en-US', { timeZone: userTimezone }));
 
-  if (
-    slotStartHours < 9 || 
-    (slotStartHours === 9 && slotStartMinutes > 0) ||
-    slotEndHours > 17 ||
-    (slotEndHours === 17 && slotEndMinutes > 0)
-  ) {
-    continue;
-  }
+        const slotStartHours = slotStartInTz.getHours();
+        const slotStartMinutes = slotStartInTz.getMinutes();
+        const slotEndHours = slotEndInTz.getHours();
+        const slotEndMinutes = slotEndInTz.getMinutes();
 
-  // Check if the slot falls on a weekend
-  if (isWeekend(slotStart)) continue;
+        // Debug logging
+        console.log('Checking slot:', {
+          start: slotStart.toISOString(),
+          end: slotEnd.toISOString(),
+          startHours: slotStartHours,
+          endHours: slotEndHours,
+          timezone: userTimezone
+        });
 
-  // Check if the slot falls on a US holiday in 2024
-  if (usHolidays2024.some(holiday => isSameDay(slotStart, holiday))) continue;
+        // Check business hours (9 AM - 5 PM)
+        if (
+          slotStartHours < 9 || 
+          slotEndHours > 17 ||
+          (slotEndHours === 17 && slotEndMinutes > 0)
+        ) {
+          console.log('Slot outside business hours, skipping');
+          continue;
+        }
 
-  // Check if the slot falls on a Friday and Fridays are excluded
-  if (preferences.noFridays && getDay(slotStart) === 5) continue;
+        // Skip weekends
+        if (isWeekend(slotStart)) {
+          console.log('Slot on weekend, skipping');
+          continue;
+        }
 
-        const isAvailable = !busyPeriods.some(busy =>
-          isWithinInterval(slotStart, { start: busy.start, end: busy.end }) ||
-          isWithinInterval(slotEnd, { start: busy.start, end: busy.end }) ||
-          (slotStart <= busy.start && slotEnd >= busy.end)
-        );
+        // Skip holidays
+        if (usHolidays2024.some(holiday => isSameDay(slotStart, holiday))) {
+          console.log('Slot on holiday, skipping');
+          continue;
+        }
+
+        // Skip Fridays if specified
+        if (preferences.noFridays && getDay(slotStart) === 5) {
+          console.log('Slot on Friday, skipping due to preferences');
+          continue;
+        }
+
+        // Improved busy period checking
+        const isAvailable = !busyPeriods.some(busy => {
+          const overlap = (
+            (slotStart >= busy.start && slotStart < busy.end) ||  // Slot starts during busy period
+            (slotEnd > busy.start && slotEnd <= busy.end) ||      // Slot ends during busy period
+            (slotStart <= busy.start && slotEnd >= busy.end)      // Slot completely contains busy period
+          );
+          
+          if (overlap) {
+            console.log('Slot overlaps with busy period:', {
+              slotStart: slotStart.toISOString(),
+              slotEnd: slotEnd.toISOString(),
+              busyStart: busy.start.toISOString(),
+              busyEnd: busy.end.toISOString()
+            });
+          }
+          
+          return overlap;
+        });
 
         if (isAvailable) {
+          console.log('Found available slot:', {
+            start: slotStart.toISOString(),
+            end: slotEnd.toISOString()
+          });
+          
           availableSlots.push({
             start: slotStart.toISOString(),
             end: slotEnd.toISOString(),
@@ -138,15 +183,17 @@ for (
         }
       }
 
-      // Get a random time-themed quote
+      // Time-themed quotes for response
       const timeQuotes = [
         "Time is the most valuable thing a man can spend. - Theophrastus",
         "Time is what we want most, but what we use worst. - William Penn",
-        "The future is something which everyone reaches at the rate of sixty minutes an hour, whatever he does, whoever he is. - C.S. Lewis",
-        // Add more time-themed quotes
+        "The future is something which everyone reaches at the rate of sixty minutes an hour. - C.S. Lewis",
+        "Lost time is never found again. - Benjamin Franklin",
+        "Time and tide wait for no man. - Geoffrey Chaucer"
       ];
       const randomQuote = timeQuotes[Math.floor(Math.random() * timeQuotes.length)];
 
+      // Return successful response
       return new Response(
         JSON.stringify({
           suggestions: availableSlots,
@@ -155,6 +202,7 @@ for (
             searchRange,
             timeMin: timeMin.toISOString(),
             timeMax: timeMax.toISOString(),
+            timezone: userTimezone
           }
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
@@ -181,4 +229,3 @@ for (
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
   }
-}
