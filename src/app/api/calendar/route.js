@@ -15,14 +15,15 @@ import {
   setMinutes,
   parseISO,
   format,
+  addMinutes
 } from 'date-fns';
-import { zonedTimeToUtc, utcToZonedTime, formatInTimeZone } from 'date-fns-tz';
+import { formatInTimeZone } from 'date-fns-tz';
 
 const BUSINESS_START_HOUR = 9;
 const BUSINESS_END_HOUR = 17;
 const MAX_SUGGESTIONS = 10;
 
-// Poetry collection (keeping your existing poetry)
+// Poetry collection
 const poetryLines = [
   "Tell me, what is it you plan to do with your one wild and precious life?",
   "For every thing there is a season, and a time to every purpose under heaven.",
@@ -32,18 +33,16 @@ const poetryLines = [
 ];
 
 // Helper to check if a date is within business hours
-function isWithinBusinessHours(date, timezone) {
-  const localDate = utcToZonedTime(date, timezone);
-  const hours = localDate.getHours();
+function isWithinBusinessHours(date) {
+  const hours = date.getHours();
   return hours >= BUSINESS_START_HOUR && hours < BUSINESS_END_HOUR;
 }
 
 // Helper to get next valid business day start
-function getNextBusinessDayStart(date, timezone) {
-  let localDate = utcToZonedTime(date, timezone);
-  let nextDay = startOfDay(localDate);
+function getNextBusinessDayStart(date) {
+  let nextDay = startOfDay(date);
   
-  if (localDate.getHours() >= BUSINESS_END_HOUR) {
+  if (date.getHours() >= BUSINESS_END_HOUR) {
     nextDay = addDays(nextDay, 1);
   }
   
@@ -51,10 +50,7 @@ function getNextBusinessDayStart(date, timezone) {
     nextDay = addDays(nextDay, 1);
   }
   
-  return zonedTimeToUtc(
-    setMinutes(setHours(nextDay, BUSINESS_START_HOUR), 0),
-    timezone
-  );
+  return setMinutes(setHours(nextDay, BUSINESS_START_HOUR), 0);
 }
 
 export async function POST(req) {
@@ -70,7 +66,7 @@ export async function POST(req) {
     const body = await req.json();
     const { attendees, searchRange, duration, preferences } = body;
     
-    // Get timezone from preferences or use UTC
+    // Get timezone from preferences
     const timezone = preferences?.timezone || 'UTC';
 
     // Convert duration to minutes
@@ -89,7 +85,7 @@ export async function POST(req) {
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
     // Set search start time to next available business day
-    const timeMin = getNextBusinessDayStart(new Date(), timezone);
+    const timeMin = getNextBusinessDayStart(new Date());
 
     // Calculate search end time based on range
     let timeMax;
@@ -136,14 +132,14 @@ export async function POST(req) {
       const slotEnd = addMinutes(currentTime, durationMinutes);
 
       // Skip if slot is outside business hours
-      if (!isWithinBusinessHours(currentTime, timezone) || !isWithinBusinessHours(slotEnd, timezone)) {
-        currentTime = getNextBusinessDayStart(addDays(currentTime, 1), timezone);
+      if (!isWithinBusinessHours(currentTime)) {
+        currentTime = getNextBusinessDayStart(addDays(currentTime, 1));
         continue;
       }
 
       // Skip weekends
-      if (isWeekend(utcToZonedTime(currentTime, timezone))) {
-        currentTime = getNextBusinessDayStart(addDays(currentTime, 1), timezone);
+      if (isWeekend(currentTime)) {
+        currentTime = getNextBusinessDayStart(addDays(currentTime, 1));
         continue;
       }
 
@@ -155,20 +151,19 @@ export async function POST(req) {
       );
 
       if (isSlotAvailable) {
-        const localDate = utcToZonedTime(currentTime, timezone);
         availableSlots.push({
           start: currentTime.toISOString(),
           end: slotEnd.toISOString(),
           localTimes: [{
-            dayOfWeek: format(localDate, 'EEEE'),
-            localStart: format(localDate, 'h:mm a'),
-            localEnd: format(utcToZonedTime(slotEnd, timezone), 'h:mm a')
+            dayOfWeek: formatInTimeZone(currentTime, timezone, 'EEEE'),
+            localStart: formatInTimeZone(currentTime, timezone, 'h:mm a'),
+            localEnd: formatInTimeZone(slotEnd, timezone, 'h:mm a')
           }]
         });
       }
 
       // Move to next slot
-      currentTime = addMinutes(currentTime, durationMinutes);
+      currentTime = addMinutes(currentTime, 30);
     }
 
     // Select a random poetry line
