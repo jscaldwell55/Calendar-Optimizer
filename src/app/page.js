@@ -2,7 +2,6 @@
 
 import { useSession, signIn } from 'next-auth/react';
 import { useState } from 'react';
-import SignOutButton from '../components/SignOutButton';
 
 export default function Home() {
   const { data: session, status } = useSession();
@@ -134,6 +133,7 @@ export default function Home() {
               Schedule Meetings{' '}
               <span className="text-lg font-normal">with Jay</span>
             </h1>
+            <div className="mt-2 flex items-center justify-between">  
             <p className="mt-2 text-gray-600">
               Signed in as: {session.user.email}
             </p>
