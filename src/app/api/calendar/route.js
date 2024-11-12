@@ -1,7 +1,7 @@
 import { google } from 'googleapis';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]/route';
-import { addDays, addWeeks, addMonths, parseISO, isWithinInterval, isWeekend, getDay, isSameDay } from 'date-fns';
+import { addDays, addWeeks, addMonths, isWeekend, getDay, isSameDay } from 'date-fns';
 
 // Define US holidays in 2024
 const usHolidays2024 = [
@@ -19,7 +19,6 @@ const usHolidays2024 = [
 
 export async function POST(req) {
   try {
-    // Validate session and access token
     const session = await getServerSession(authOptions);
     if (!session?.accessToken) {
       console.log('No access token found in session:', session);
@@ -29,11 +28,9 @@ export async function POST(req) {
       );
     }
 
-    // Parse request body
     const body = await req.json();
     const { attendees, searchRange, duration, preferences } = body;
     
-    // Set up OAuth2 client
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET
@@ -46,27 +43,53 @@ export async function POST(req) {
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
-    // Set time range with corrected cases
-    const timeMin = new Date();
+    // Start from the next 30-minute increment
+    const now = new Date();
+    const currentMinutes = now.getMinutes();
+    const nextSlotMinutes = Math.ceil(currentMinutes / 30) * 30;
+    const timeMin = new Date(now);
+    timeMin.setMinutes(nextSlotMinutes);
+    timeMin.setSeconds(0);
+    timeMin.setMilliseconds(0);
+
+    // If we're past 5 PM, start from 9 AM next day
+    if (timeMin.getHours() >= 17) {
+      timeMin.setDate(timeMin.getDate() + 1);
+      timeMin.setHours(9);
+      timeMin.setMinutes(0);
+    }
+    // If we're before 9 AM, start at 9 AM
+    else if (timeMin.getHours() < 9) {
+      timeMin.setHours(9);
+      timeMin.setMinutes(0);
+    }
+
     let timeMax;
     switch (searchRange) {
       case 'day':
-        timeMax = addDays(timeMin, 1);
+        timeMax = addDays(new Date(timeMin), 1);
         break;
       case 'week':
-        timeMax = addWeeks(timeMin, 1);
+        timeMax = addWeeks(new Date(timeMin), 1);
         break;
       case 'month':
-        timeMax = addMonths(timeMin, 1);
+        timeMax = addMonths(new Date(timeMin), 1);
         break;
       default:
-        timeMax = addDays(timeMin, 1);
+        timeMax = addDays(new Date(timeMin), 1);
     }
 
-    // Get timezone from preferences or system default
-    const userTimezone = preferences.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    // Set timeMax to 5 PM of its day
+    timeMax.setHours(17);
+    timeMax.setMinutes(0);
+    timeMax.setSeconds(0);
+    timeMax.setMilliseconds(0);
 
-    // Query for busy periods
+    console.log('Searching between:', {
+      timeMin: timeMin.toISOString(),
+      timeMax: timeMax.toISOString()
+    });
+
     const freeBusy = await calendar.freebusy.query({
       requestBody: {
         timeMin: timeMin.toISOString(),
@@ -75,13 +98,10 @@ export async function POST(req) {
           { id: 'primary' },
           ...attendees.map(email => ({ id: email }))
         ],
-        timeZone: userTimezone,
+        timeZone: 'system',
       },
     });
 
-    console.log('FreeBusy response:', JSON.stringify(freeBusy.data, null, 2));
-
-    // Process and sort busy periods
     const busyPeriods = Object.values(freeBusy.data.calendars)
       .flatMap(calendar => calendar.busy || [])
       .map(period => ({
@@ -90,10 +110,11 @@ export async function POST(req) {
       }))
       .sort((a, b) => a.start.getTime() - b.start.getTime());
 
-    // Find available slots
+    console.log('Busy periods:', busyPeriods);
+
     const availableSlots = [];
     const slotDuration = duration * 60 * 1000; // Convert minutes to milliseconds
-    const stepSize = 30 * 60 * 1000; // 30-minute intervals
+    const stepSize = 30 * 60 * 1000; // 30-minute increments
 
     for (
       let currentTime = timeMin.getTime();
@@ -103,78 +124,38 @@ export async function POST(req) {
       const slotStart = new Date(currentTime);
       const slotEnd = new Date(currentTime + slotDuration);
 
-      // Convert times to user's timezone
-      const slotStartInTz = new Date(slotStart.toLocaleString('en-US', { timeZone: userTimezone }));
-      const slotEndInTz = new Date(slotEnd.toLocaleString('en-US', { timeZone: userTimezone }));
-
-      const slotStartHours = slotStartInTz.getHours();
-      const slotStartMinutes = slotStartInTz.getMinutes();
-      const slotEndHours = slotEndInTz.getHours();
-      const slotEndMinutes = slotEndInTz.getMinutes();
-
-      // Debug logging
-      console.log('Checking slot:', {
-        start: slotStart.toISOString(),
-        end: slotEnd.toISOString(),
-        startHours: slotStartHours,
-        endHours: slotEndHours,
-        timezone: userTimezone
-      });
-
-      // Check business hours (9 AM - 5 PM)
-      if (
-        slotStartHours < 9 || 
-        slotEndHours > 17 ||
-        (slotEndHours === 17 && slotEndMinutes > 0)
-      ) {
-        console.log('Slot outside business hours, skipping');
+      // Skip if slot ends after 5 PM
+      if (slotEnd.getHours() >= 17) {
         continue;
       }
 
       // Skip weekends
       if (isWeekend(slotStart)) {
-        console.log('Slot on weekend, skipping');
         continue;
       }
 
       // Skip holidays
       if (usHolidays2024.some(holiday => isSameDay(slotStart, holiday))) {
-        console.log('Slot on holiday, skipping');
         continue;
       }
 
       // Skip Fridays if specified
       if (preferences.noFridays && getDay(slotStart) === 5) {
-        console.log('Slot on Friday, skipping due to preferences');
         continue;
       }
 
-      // Improved busy period checking
-      const isAvailable = !busyPeriods.some(busy => {
-        const overlap = (
-          (slotStart >= busy.start && slotStart < busy.end) ||  // Slot starts during busy period
-          (slotEnd > busy.start && slotEnd <= busy.end) ||      // Slot ends during busy period
-          (slotStart <= busy.start && slotEnd >= busy.end)      // Slot completely contains busy period
-        );
-        
-        if (overlap) {
-          console.log('Slot overlaps with busy period:', {
-            slotStart: slotStart.toISOString(),
-            slotEnd: slotEnd.toISOString(),
-            busyStart: busy.start.toISOString(),
-            busyEnd: busy.end.toISOString()
-          });
-        }
-        
-        return overlap;
-      });
+      const isAvailable = !busyPeriods.some(busy => (
+        (slotStart >= busy.start && slotStart < busy.end) ||
+        (slotEnd > busy.start && slotEnd <= busy.end) ||
+        (slotStart <= busy.start && slotEnd >= busy.end)
+      ));
 
       if (isAvailable) {
         console.log('Found available slot:', {
           start: slotStart.toISOString(),
           end: slotEnd.toISOString()
         });
-        
+
         availableSlots.push({
           start: slotStart.toISOString(),
           end: slotEnd.toISOString(),
@@ -182,26 +163,14 @@ export async function POST(req) {
       }
     }
 
-    // Time-themed quotes for response
-    const timeQuotes = [
-      "Time is the most valuable thing a man can spend. - Theophrastus",
-      "Time is what we want most, but what we use worst. - William Penn",
-      "The future is something which everyone reaches at the rate of sixty minutes an hour. - C.S. Lewis",
-      "Lost time is never found again. - Benjamin Franklin",
-      "Time and tide wait for no man. - Geoffrey Chaucer"
-    ];
-    const randomQuote = timeQuotes[Math.floor(Math.random() * timeQuotes.length)];
-
-    // Return successful response
     return new Response(
       JSON.stringify({
         suggestions: availableSlots,
-        quote: randomQuote,
         metadata: {
           searchRange,
           timeMin: timeMin.toISOString(),
           timeMax: timeMax.toISOString(),
-          timezone: userTimezone
+          timezone: 'system'
         }
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
