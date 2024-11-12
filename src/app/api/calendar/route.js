@@ -9,15 +9,9 @@ import {
   isWeekend,
   getDay,
   isSameDay,
-  startOfDay,
-  endOfDay,
-  setHours,
-  setMinutes,
   parseISO,
   format,
-  addMinutes
 } from 'date-fns';
-import { utcToZonedTime, zonedTimeToUtc } from 'date-fns-tz';
 
 const BUSINESS_START_HOUR = 9;
 const BUSINESS_END_HOUR = 17;
@@ -25,17 +19,17 @@ const MAX_SUGGESTIONS = 5;
 
 // US Holidays 2024
 const US_HOLIDAYS_2024 = [
-  new Date('2024-01-01'), // New Year's Day
-  new Date('2024-01-15'), // Martin Luther King Jr. Day
-  new Date('2024-02-19'), // Presidents' Day
-  new Date('2024-05-27'), // Memorial Day
-  new Date('2024-07-04'), // Independence Day
-  new Date('2024-09-02'), // Labor Day
-  new Date('2024-10-14'), // Columbus Day
-  new Date('2024-11-11'), // Veterans Day
-  new Date('2024-11-28'), // Thanksgiving Day
-  new Date('2024-12-25'), // Christmas Day
-].map(date => date.toISOString());
+  '2024-01-01', // New Year's Day
+  '2024-01-15', // Martin Luther King Jr. Day
+  '2024-02-19', // Presidents' Day
+  '2024-05-27', // Memorial Day
+  '2024-07-04', // Independence Day
+  '2024-09-02', // Labor Day
+  '2024-10-14', // Columbus Day
+  '2024-11-11', // Veterans Day
+  '2024-11-28', // Thanksgiving Day
+  '2024-12-25', // Christmas Day
+];
 
 const timeQuotes = [
   "Tell me, what is it you plan to do with your one wild and precious life?",
@@ -46,8 +40,8 @@ const timeQuotes = [
 ];
 
 // Helper function for 12-hour time format
-function formatAMPM(isoString, timezone) {
-  const date = utcToZonedTime(new Date(isoString), timezone);
+function formatAMPM(dateString) {
+  const date = new Date(dateString);
   let hours = date.getHours();
   let minutes = date.getMinutes();
   const ampm = hours >= 12 ? 'pm' : 'am';
@@ -58,30 +52,58 @@ function formatAMPM(isoString, timezone) {
 }
 
 // Helper to check if date is a holiday
-function isHoliday(date, timezone) {
-  const zonedDate = utcToZonedTime(date, timezone);
+function isHoliday(dateString) {
+  const date = new Date(dateString);
   return US_HOLIDAYS_2024.some(holiday => 
-    isSameDay(zonedDate, utcToZonedTime(new Date(holiday), timezone))
+    isSameDay(date, new Date(holiday))
   );
 }
 
-// Helper to get start of business day in user's timezone
-function getBusinessDayStart(date, timezone) {
-  const zonedDate = utcToZonedTime(date, timezone);
-  const businessStart = setMinutes(setHours(startOfDay(zonedDate), BUSINESS_START_HOUR), 0);
-  return zonedTimeToUtc(businessStart, timezone);
-}
-
-// Helper to get next available business day
-function getNextBusinessDay(date, timezone) {
-  let nextDay = utcToZonedTime(date, timezone);
+// Helper to get next business day's date string
+function getNextBusinessDay(dateString, timezone) {
+  let date = new Date(dateString);
   do {
-    nextDay = addDays(nextDay, 1);
+    date = addDays(date, 1);
   } while (
-    isWeekend(nextDay) || 
-    isHoliday(zonedTimeToUtc(nextDay, timezone), timezone)
+    isWeekend(date) || 
+    isHoliday(date.toISOString())
   );
-  return zonedTimeToUtc(nextDay, timezone);
+  
+  return format(date, "yyyy-MM-dd'T'09:00:00");
+}
+
+// Helper to batch process attendee calendars
+async function getBatchFreeBusy(calendar, timeMin, timeMax, attendees, timezone) {
+  const batchSize = 10;
+  const batches = [];
+  
+  for (let i = 0; i < attendees.length; i += batchSize) {
+    batches.push(attendees.slice(i, i + batchSize));
+  }
+
+  const allBusyPeriods = [];
+  
+  for (const batch of batches) {
+    try {
+      const freeBusy = await calendar.freebusy.query({
+        requestBody: {
+          timeMin,
+          timeMax,
+          timeZone: timezone,
+          items: batch.map(email => ({ id: email }))
+        },
+      });
+
+      const batchBusyPeriods = Object.values(freeBusy.data.calendars)
+        .flatMap(calendar => calendar.busy || []);
+
+      allBusyPeriods.push(...batchBusyPeriods);
+    } catch (error) {
+      console.error(`Error processing batch: ${batch.join(', ')}`, error);
+    }
+  }
+
+  return allBusyPeriods;
 }
 
 export async function POST(req) {
@@ -97,9 +119,9 @@ export async function POST(req) {
     const body = await req.json();
     const { attendees, searchRange, duration, preferences } = body;
     
-    const timezone = preferences?.timezone || 'UTC';
+    const timezone = preferences?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
     
-    // Convert duration string to minutes
+    // Convert duration to minutes
     const durationMap = {
       '15': 15,
       '30': 30,
@@ -119,120 +141,109 @@ export async function POST(req) {
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
-    // Get current time in user's timezone
+    // Get current date in correct format
     const now = new Date();
-    let timeMin = getBusinessDayStart(now, timezone);
-    const currentHour = utcToZonedTime(now, timezone).getHours();
-
-    // If current time is past business hours, move to next business day
+    const currentHour = now.getHours();
+    
+    // Set up initial search time
+    let startDate = format(now, "yyyy-MM-dd'T'09:00:00");
     if (currentHour >= BUSINESS_END_HOUR) {
-      timeMin = getBusinessDayStart(getNextBusinessDay(now, timezone), timezone);
+      startDate = getNextBusinessDay(now.toISOString(), timezone);
     }
 
-    // Calculate search end time based on range
-    let timeMax;
+    // Calculate end date based on search range
+    let endDate;
     switch (searchRange) {
       case 'hour':
-        timeMax = addDays(timeMin, 1);
+        endDate = format(addDays(parseISO(startDate), 1), "yyyy-MM-dd'T'17:00:00");
         break;
       case 'week':
-        timeMax = addWeeks(timeMin, 1);
+        endDate = format(addWeeks(parseISO(startDate), 1), "yyyy-MM-dd'T'17:00:00");
         break;
       case 'month':
-        timeMax = addMonths(timeMin, 1);
+        endDate = format(addMonths(parseISO(startDate), 1), "yyyy-MM-dd'T'17:00:00");
         break;
       default:
-        timeMax = addDays(timeMin, 1);
+        endDate = format(addDays(parseISO(startDate), 1), "yyyy-MM-dd'T'17:00:00");
     }
 
     // Get free/busy information
-    const freeBusy = await calendar.freebusy.query({
-      requestBody: {
-        timeMin: timeMin.toISOString(),
-        timeMax: timeMax.toISOString(),
-        timeZone: timezone,
-        items: [
-          { id: 'primary' },
-          ...attendees.map(email => ({ id: email }))
-        ],
-      },
-    });
+    const freeBusyRequest = {
+      timeMin: startDate,
+      timeMax: endDate,
+      timeZone: timezone,
+      items: [
+        { id: 'primary' },
+        ...attendees.map(email => ({ id: email }))
+      ]
+    };
 
-    const busyPeriods = Object.values(freeBusy.data.calendars)
-      .flatMap(calendar => calendar.busy || [])
-      .map(period => ({
-        start: new Date(period.start),
-        end: new Date(period.end)
-      }))
-      .sort((a, b) => a.start.getTime() - b.start.getTime());
+    const busyPeriods = await getBatchFreeBusy(
+      calendar, 
+      startDate, 
+      endDate, 
+      [...attendees, 'primary'],
+      timezone
+    );
 
     // Find available slots
     const availableSlots = [];
-    let currentTime = timeMin;
+    let currentTime = new Date(startDate);
+    const endTime = new Date(endDate);
 
-    while (availableSlots.length < MAX_SUGGESTIONS && currentTime < timeMax) {
-      const slotEnd = addMinutes(currentTime, durationMinutes);
+    while (availableSlots.length < MAX_SUGGESTIONS && currentTime < endTime) {
+      const slotEndTime = new Date(currentTime.getTime() + durationMinutes * 60000);
       
-      // Convert to zoned time for checking hours
-      const zonedTime = utcToZonedTime(currentTime, timezone);
-      const zonedEndTime = utcToZonedTime(slotEnd, timezone);
-
       // Skip if outside business hours
-      if (zonedTime.getHours() < BUSINESS_START_HOUR || 
-          zonedTime.getHours() >= BUSINESS_END_HOUR ||
-          zonedEndTime.getHours() > BUSINESS_END_HOUR) {
-        currentTime = getBusinessDayStart(addDays(currentTime, 1), timezone);
+      const hour = currentTime.getHours();
+      if (hour < BUSINESS_START_HOUR || hour >= BUSINESS_END_HOUR) {
+        currentTime = new Date(currentTime.setHours(BUSINESS_START_HOUR, 0, 0, 0));
+        currentTime = addDays(currentTime, 1);
         continue;
       }
 
       // Skip weekends
-      if (isWeekend(zonedTime)) {
-        const daysToAdd = zonedTime.getDay() === 6 ? 2 : 1;
-        currentTime = getBusinessDayStart(addDays(currentTime, daysToAdd), timezone);
+      if (isWeekend(currentTime)) {
+        currentTime = addDays(currentTime, currentTime.getDay() === 6 ? 2 : 1);
+        currentTime.setHours(BUSINESS_START_HOUR, 0, 0, 0);
         continue;
       }
 
       // Skip holidays
-      if (isHoliday(currentTime, timezone)) {
-        currentTime = getBusinessDayStart(addDays(currentTime, 1), timezone);
+      if (isHoliday(currentTime.toISOString())) {
+        currentTime = addDays(currentTime, 1);
+        currentTime.setHours(BUSINESS_START_HOUR, 0, 0, 0);
         continue;
       }
 
       // Skip Fridays if specified
-      if (preferences.noFridays && zonedTime.getDay() === 5) {
-        currentTime = getBusinessDayStart(addDays(currentTime, 3), timezone);
+      if (preferences.noFridays && currentTime.getDay() === 5) {
+        currentTime = addDays(currentTime, 3);
+        currentTime.setHours(BUSINESS_START_HOUR, 0, 0, 0);
         continue;
       }
 
-      // Check if slot conflicts with any busy periods
-      const isSlotAvailable = !busyPeriods.some(busy =>
-        isWithinInterval(currentTime, { start: busy.start, end: busy.end }) ||
-        isWithinInterval(slotEnd, { start: busy.start, end: busy.end }) ||
-        (currentTime <= busy.start && slotEnd >= busy.end)
+      // Check for conflicts
+      const isSlotAvailable = !busyPeriods.some(period =>
+        isWithinInterval(currentTime, { start: new Date(period.start), end: new Date(period.end) }) ||
+        isWithinInterval(slotEndTime, { start: new Date(period.start), end: new Date(period.end) })
       );
 
       if (isSlotAvailable) {
-        const isoStart = currentTime.toISOString();
-        const isoEnd = slotEnd.toISOString();
-        availableSlots.push({
-          start: isoStart,
-          end: isoEnd,
+        const timeSlot = {
+          start: currentTime.toISOString(),
+          end: slotEndTime.toISOString(),
           localTimes: [{
-            dayOfWeek: format(zonedTime, 'EEEE'),
-            localStart: formatAMPM(isoStart, timezone),
-            localEnd: formatAMPM(isoEnd, timezone)
+            dayOfWeek: format(currentTime, 'EEEE'),
+            localStart: formatAMPM(currentTime),
+            localEnd: formatAMPM(slotEndTime)
           }]
-        });
+        };
+        availableSlots.push(timeSlot);
       }
 
       // Move to next slot
-      currentTime = addMinutes(currentTime, durationMinutes);
-      
-      // If we've passed business hours, move to next business day
-      const nextSlotHour = utcToZonedTime(currentTime, timezone).getHours();
-      if (nextSlotHour >= BUSINESS_END_HOUR) {
-        currentTime = getBusinessDayStart(addDays(currentTime, 1), timezone);
-      }
+      currentTime = new Date(currentTime.getTime() + durationMinutes * 60000);
     }
 
     // Select a random quote
