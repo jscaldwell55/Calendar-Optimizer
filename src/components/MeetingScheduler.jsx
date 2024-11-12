@@ -54,8 +54,9 @@ export default function MeetingScheduler() {
           searchRange,
           duration,
           preferences: {
-            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
-          }
+            noFridays: false
+          },
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone // Move timezone to top level
         }),
       });
 
