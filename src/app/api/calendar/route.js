@@ -44,7 +44,7 @@ export async function POST(req) {
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
     // Start from the next 30-minute increment
-    const currentDate = new Date();
+    const now = new Date();
     let timeMin = new Date(now);
     
     // Set to next 30-minute increment
@@ -130,8 +130,8 @@ const isWithinBusinessHours = (date) => {
 };
 
 // Adjust `timeMin` to start at the next available business hour if it's outside of 9 AM - 5 PM
-const now = new Date();
-let timeMin = new Date(now);
+const currentDate = new Date();
+let timeMin = new Date(currentDate);
 
 // If current time is outside business hours, set `timeMin` to the next day at 9 AM
 const currentHour = timeMin.getHours();
