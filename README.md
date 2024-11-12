@@ -1,22 +1,21 @@
 # Calendar Optimizer
 
 ## Features
+- Sign in with Google
+- Paste multiple Gmail or Google Workspace addresses
+- Choose availability search period (1 day, 1 week, 1 month)
+- Set meeting duration (15 min, 30 min, 1 hour) 
+- Optional: Exclude Fridays
+- Get up to 5 available meeting times
+- Generates random fun quote with results 
+- Signs out from Google automatically after 10 minutes of inactivity
 
-- **Smart Scheduling**: Find available meeting times across multiple attendees
-- **Time Ranges**: Search next hour, week, or month
-- **Meeting Duration**: Choose between 15, 30, or 60-minute meetings
 - **Optimizations**: 
-  - Business hours only (9 AM - 5 PM)
-  - Weekend-free scheduling
-  - Optional Friday exclusion
-  - US holidays automatically blocked
-  - Morning slots (9-11 AM) get highest priority
-  - Earlier in week gets higher priority (Monday > Tuesday > etc.)
-  - Scores combine time of day and day of week preferences, and determine which availabilities are included in 
-    the results
-  - Still respects all existing constraints (business hours, weekends, etc.)
-- **Results**: Shows up to 5
-- **Each search result includes a randomly selected quote**
+- Only checks 9 AM - 5 PM
+- Skips weekends
+- Skips major US holidays 2024
+- Works with pasted lists of emails
+- Multiple email separator support (commas, spaces, newlines)
 
 ## Requirements
 
@@ -40,7 +39,7 @@ The app automatically filters out:
    - Comma-separated
    - Space-separated
    - New line-separated
-3. Select search range (Hour/Week/Month)
+3. Select search range (Day/Week/Month)
 4. Choose meeting duration
 5. Optionally exclude Fridays
 6. Click "Find Available Times"
