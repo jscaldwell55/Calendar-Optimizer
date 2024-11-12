@@ -3,7 +3,7 @@ Certainly! Here's the updated code with the specified time values and ensuring t
 ```javascript
 import { google } from 'googleapis';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '../auth/[...nextauth]/route';
+import { authOptions } from '../app/[...nextauth]/route';
 import { addDays, addHours, addMonths, parseISO, isWithinInterval, isWeekend, getDay } from 'date-fns';
 
 // Define US holidays in 2024
