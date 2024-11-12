@@ -3,15 +3,48 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]/route';
 import { addDays, addWeeks, addMonths, isWeekend, getDay, isSameDay, startOfDay, endOfDay } from 'date-fns';
 
-// ... (holidays array stays the same)
+// Define US holidays in 2024
+const usHolidays2024 = [
+  new Date('2024-01-01'), // New Year's Day
+  new Date('2024-01-15'), // Martin Luther King Jr. Day
+  new Date('2024-02-19'), // Presidents' Day
+  new Date('2024-05-27'), // Memorial Day
+  new Date('2024-07-04'), // Independence Day
+  new Date('2024-09-02'), // Labor Day
+  new Date('2024-10-14'), // Columbus Day
+  new Date('2024-11-11'), // Veterans Day
+  new Date('2024-11-28'), // Thanksgiving Day
+  new Date('2024-12-25'), // Christmas Day
+];
 
 export async function POST(req) {
   try {
-    // ... (session validation and OAuth2 setup stays the same)
+    const session = await getServerSession(authOptions);
+    if (!session?.accessToken) {
+      console.log('No access token found in session:', session);
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized - No access token' }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
 
     const body = await req.json();
     const { attendees, searchRange, duration, preferences } = body;
     
+    // Set up OAuth2 client
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET
+    );
+
+    oauth2Client.setCredentials({
+      access_token: session.accessToken,
+      refresh_token: session.refreshToken
+    });
+
+    // Create calendar instance
+    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+
     // Start from the next 30-minute increment
     const now = new Date();
     const currentMinutes = now.getMinutes();
@@ -43,7 +76,12 @@ export async function POST(req) {
         timeMax = addDays(startOfDay(new Date(timeMin)), 1);
     }
 
-    // First, get all-day events
+    console.log('Fetching all-day events between:', {
+      timeMin: startOfDay(timeMin).toISOString(),
+      timeMax: endOfDay(timeMax).toISOString()
+    });
+
+    // Get all-day events using the calendar instance
     const eventsResponse = await calendar.events.list({
       calendarId: 'primary',
       timeMin: startOfDay(timeMin).toISOString(),
@@ -52,17 +90,20 @@ export async function POST(req) {
       orderBy: 'startTime',
     });
 
+    console.log('Events response:', eventsResponse.data.items);
+
     const allDayEvents = eventsResponse.data.items
       .filter(event => {
-        const start = new Date(event.start.date || event.start.dateTime);
-        return !event.start.dateTime; // true if it's an all-day event
+        return event.start.date != null; // Check for all-day events
       })
       .map(event => ({
         start: new Date(event.start.date),
         end: new Date(event.end.date)
       }));
 
-    // Then get free/busy information
+    console.log('All-day events:', allDayEvents);
+
+    // Get free/busy information using the same calendar instance
     const freeBusy = await calendar.freebusy.query({
       requestBody: {
         timeMin: timeMin.toISOString(),
@@ -82,6 +123,8 @@ export async function POST(req) {
         end: new Date(period.end)
       }))
       .sort((a, b) => a.start.getTime() - b.start.getTime());
+
+    console.log('Busy periods:', busyPeriods);
 
     const availableSlots = [];
     const slotDuration = duration * 60 * 1000;
@@ -124,11 +167,12 @@ export async function POST(req) {
       // Skip all-day events
       const isAllDayEvent = allDayEvents.some(event => {
         const eventStart = startOfDay(event.start);
-        const eventEnd = endOfDay(event.end);
-        return slotStart >= eventStart && slotStart < eventEnd;
+        const eventEnd = endOfDay(new Date(event.end.getTime() - 24 * 60 * 60 * 1000)); // Subtract one day from end date
+        return slotStart >= eventStart && slotStart <= eventEnd;
       });
 
       if (isAllDayEvent) {
+        console.log('Skipping slot due to all-day event:', slotStart.toISOString());
         continue;
       }
 
@@ -140,6 +184,11 @@ export async function POST(req) {
       ));
 
       if (isAvailable) {
+        console.log('Found available slot:', {
+          start: slotStart.toISOString(),
+          end: slotEnd.toISOString()
+        });
+
         availableSlots.push({
           start: slotStart.toISOString(),
           end: slotEnd.toISOString(),
