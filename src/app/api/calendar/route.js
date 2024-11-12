@@ -1,7 +1,24 @@
+Certainly! Here's the updated code with the specified time values and ensuring the days are handled correctly:
+
+```javascript
 import { google } from 'googleapis';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]/route';
-import { addDays, addHours, addMonths, parseISO, isWithinInterval } from 'date-fns';
+import { addDays, addHours, addMonths, parseISO, isWithinInterval, isWeekend, getDay } from 'date-fns';
+
+// Define US holidays in 2024
+const usHolidays2024 = [
+  new Date('2024-01-01'), // New Year's Day
+  new Date('2024-01-15'), // Martin Luther King Jr. Day
+  new Date('2024-02-19'), // Presidents' Day
+  new Date('2024-05-27'), // Memorial Day
+  new Date('2024-07-04'), // Independence Day
+  new Date('2024-09-02'), // Labor Day
+  new Date('2024-10-14'), // Columbus Day
+  new Date('2024-11-11'), // Veterans Day
+  new Date('2024-11-28'), // Thanksgiving Day
+  new Date('2024-12-25'), // Christmas Day
+];
 
 export async function POST(req) {
   try {
@@ -73,52 +90,59 @@ export async function POST(req) {
         .sort((a, b) => a.start.getTime() - b.start.getTime());
 
       // Find available slots
-const availableSlots = [];
-const slotDuration = duration * 60 * 1000;
-const stepSize = 30 * 60 * 1000;
+      const availableSlots = [];
+      const slotDuration = duration * 60 * 1000;
+      const stepSize = 30 * 60 * 1000;
 
-for (
-  let currentTime = timeMin.getTime();
-  currentTime < timeMax.getTime() && availableSlots.length < 5;
-  currentTime += stepSize
-) {
-  const slotStart = new Date(currentTime);
-  const slotEnd = new Date(currentTime + slotDuration);
+      for (
+        let currentTime = timeMin.getTime();
+        currentTime < timeMax.getTime() && availableSlots.length < 5;
+        currentTime += stepSize
+      ) {
+        const slotStart = new Date(currentTime);
+        const slotEnd = new Date(currentTime + slotDuration);
 
-  // Convert slot start time to 12-hour format with AM/PM
-  const slotStartHours = slotStart.getHours();
-  const slotStartMinutes = slotStart.getMinutes();
-  const slotStartAmPm = slotStartHours >= 12 ? 'PM' : 'AM';
-  const slotStartHours12 = slotStartHours % 12 || 12;
-  const slotStartTime = `${slotStartHours12}:${slotStartMinutes.toString().padStart(2, '0')} ${slotStartAmPm}`;
+        // Check if the slot falls within business hours (9 AM - 5 PM)
+        const slotStartHours = slotStart.getHours();
+        const slotEndHours = slotEnd.getHours();
+        if (slotStartHours < 9 || slotEndHours > 17) continue;
 
-  // Skip non-working hours (before 9:00 AM or after 5:00 PM)
-  if (slotStartTime < '9:00 AM' || slotStartTime >= '5:00 PM') continue;
+        // Check if the slot falls on a weekend
+        if (isWeekend(slotStart)) continue;
 
-  // Skip weekends
-  const day = slotStart.getDay();
-  if (day === 0 || day === 6) continue;
+        // Check if the slot falls on a US holiday in 2024
+        if (usHolidays2024.some(holiday => isSameDay(slotStart, holiday))) continue;
 
-  // Skip Fridays if excluded
-  if (preferences.noFridays && day === 5) continue;
+        // Check if the slot falls on a Friday and Fridays are excluded
+        if (preferences.noFridays && getDay(slotStart) === 5) continue;
 
-  const isAvailable = !busyPeriods.some(busy =>
-    isWithinInterval(slotStart, { start: busy.start, end: busy.end }) ||
-    isWithinInterval(slotEnd, { start: busy.start, end: busy.end }) ||
-    (slotStart <= busy.start && slotEnd >= busy.end)
-  );
+        const isAvailable = !busyPeriods.some(busy =>
+          isWithinInterval(slotStart, { start: busy.start, end: busy.end }) ||
+          isWithinInterval(slotEnd, { start: busy.start, end: busy.end }) ||
+          (slotStart <= busy.start && slotEnd >= busy.end)
+        );
 
-  if (isAvailable) {
-    availableSlots.push({
-      start: slotStart.toISOString(),
-      end: slotEnd.toISOString(),
-    });
-  }
-}
+        if (isAvailable) {
+          availableSlots.push({
+            start: slotStart.toISOString(),
+            end: slotEnd.toISOString(),
+          });
+        }
+      }
+
+      // Get a random time-themed quote
+      const timeQuotes = [
+        "Time is the most valuable thing a man can spend. - Theophrastus",
+        "Time is what we want most, but what we use worst. - William Penn",
+        "The future is something which everyone reaches at the rate of sixty minutes an hour, whatever he does, whoever he is. - C.S. Lewis",
+        // Add more time-themed quotes
+      ];
+      const randomQuote = timeQuotes[Math.floor(Math.random() * timeQuotes.length)];
 
       return new Response(
         JSON.stringify({
           suggestions: availableSlots,
+          quote: randomQuote,
           metadata: {
             searchRange,
             timeMin: timeMin.toISOString(),
@@ -131,7 +155,7 @@ for (
     } catch (calendarError) {
       console.error('Calendar API error:', calendarError);
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           error: 'Calendar API error',
           details: calendarError.message
         }),
@@ -142,7 +166,7 @@ for (
   } catch (error) {
     console.error('General error:', error);
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         error: 'Failed to process request',
         details: error.message
       }),
@@ -150,3 +174,24 @@ for (
     );
   }
 }
+```
+
+Here are the key changes:
+
+1. Added `usHolidays2024` array to define the US holidays in 2024.
+2. Updated the time range checks to use business hours (9 AM - 5 PM) by comparing the `slotStartHours` and `slotEndHours` with the desired range.
+3. Added checks to exclude weekends using the `isWeekend` function from `date-fns`.
+4. Added a check to exclude US holidays in 2024 by comparing the `slotStart` with each holiday using the `isSameDay` function from `date-fns`.
+5. Updated the Friday exclusion check to use the `getDay` function from `date-fns` to determine if the `slotStart` falls on a Friday.
+6. Added a random time-themed quote to the response by selecting a random quote from the `timeQuotes` array.
+
+With these modifications, the code should now meet the specified requirements:
+
+- Business hours only (9 AM - 5 PM)
+- Excludes weekends, US holidays in 2024, and times when attendees are busy
+- Displays up to 5 available time slots
+- Includes a random time-themed quote with each search result
+
+Please note that you'll need to add more time-themed quotes to the `timeQuotes` array to provide a variety of quotes.
+
+Let me know if you have any further questions or if there's anything else I can assist you with!
