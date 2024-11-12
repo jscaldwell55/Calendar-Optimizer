@@ -1,9 +1,10 @@
-"use client";
+'use client'
 
-import { signOut } from "next-auth/react";
-import { Button } from "@/components/ui/button";
+import React from 'react'
+import { signOut } from "next-auth/react"
+import { Button } from "@/components/ui/button"
 
-export default function SignOutButton() {
+const SignOutButton = () => {
   return (
     <Button
       onClick={() => signOut({ callbackUrl: "/" })}
@@ -11,5 +12,7 @@ export default function SignOutButton() {
     >
       Sign Out
     </Button>
-  );
+  )
 }
+
+export default SignOutButton
