@@ -54,7 +54,7 @@ export async function POST(req) {
         timeMax = addDay(timeMin, 1);
         break;
       case 'week':
-        timeMax = addDays(timeMin, 7);
+        timeMax = addWeek(timeMin, 1);
         break;
       case 'month':
         timeMax = addMonths(timeMin, 1);
