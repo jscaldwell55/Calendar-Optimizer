@@ -1,48 +1,17 @@
 import { google } from 'googleapis';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]/route';
-import { addDays, addWeeks, addMonths, isWeekend, getDay, isSameDay } from 'date-fns';
+import { addDays, addWeeks, addMonths, isWeekend, getDay, isSameDay, startOfDay, endOfDay } from 'date-fns';
 
-// Define US holidays in 2024
-const usHolidays2024 = [
-  new Date('2024-01-01'), // New Year's Day
-  new Date('2024-01-15'), // Martin Luther King Jr. Day
-  new Date('2024-02-19'), // Presidents' Day
-  new Date('2024-05-27'), // Memorial Day
-  new Date('2024-07-04'), // Independence Day
-  new Date('2024-09-02'), // Labor Day
-  new Date('2024-10-14'), // Columbus Day
-  new Date('2024-11-11'), // Veterans Day
-  new Date('2024-11-28'), // Thanksgiving Day
-  new Date('2024-12-25'), // Christmas Day
-];
+// ... (holidays array stays the same)
 
 export async function POST(req) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.accessToken) {
-      console.log('No access token found in session:', session);
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized - No access token' }),
-        { status: 401, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
+    // ... (session validation and OAuth2 setup stays the same)
 
     const body = await req.json();
     const { attendees, searchRange, duration, preferences } = body;
     
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET
-    );
-
-    oauth2Client.setCredentials({
-      access_token: session.accessToken,
-      refresh_token: session.refreshToken
-    });
-
-    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
-
     // Start from the next 30-minute increment
     const now = new Date();
     const currentMinutes = now.getMinutes();
@@ -52,14 +21,9 @@ export async function POST(req) {
     timeMin.setSeconds(0);
     timeMin.setMilliseconds(0);
 
-    // If we're past 5 PM, start from 9 AM next day
-    if (timeMin.getHours() >= 17) {
+    // If we're past 5 PM or before 9 AM, start from 9 AM next business day
+    if (timeMin.getHours() >= 17 || timeMin.getHours() < 9) {
       timeMin.setDate(timeMin.getDate() + 1);
-      timeMin.setHours(9);
-      timeMin.setMinutes(0);
-    }
-    // If we're before 9 AM, start at 9 AM
-    else if (timeMin.getHours() < 9) {
       timeMin.setHours(9);
       timeMin.setMinutes(0);
     }
@@ -67,29 +31,38 @@ export async function POST(req) {
     let timeMax;
     switch (searchRange) {
       case 'day':
-        timeMax = addDays(new Date(timeMin), 1);
+        timeMax = addDays(startOfDay(new Date(timeMin)), 1);
         break;
       case 'week':
-        timeMax = addWeeks(new Date(timeMin), 1);
+        timeMax = addWeeks(startOfDay(new Date(timeMin)), 1);
         break;
       case 'month':
-        timeMax = addMonths(new Date(timeMin), 1);
+        timeMax = addMonths(startOfDay(new Date(timeMin)), 1);
         break;
       default:
-        timeMax = addDays(new Date(timeMin), 1);
+        timeMax = addDays(startOfDay(new Date(timeMin)), 1);
     }
 
-    // Set timeMax to 5 PM of its day
-    timeMax.setHours(17);
-    timeMax.setMinutes(0);
-    timeMax.setSeconds(0);
-    timeMax.setMilliseconds(0);
-
-    console.log('Searching between:', {
-      timeMin: timeMin.toISOString(),
-      timeMax: timeMax.toISOString()
+    // First, get all-day events
+    const eventsResponse = await calendar.events.list({
+      calendarId: 'primary',
+      timeMin: startOfDay(timeMin).toISOString(),
+      timeMax: endOfDay(timeMax).toISOString(),
+      singleEvents: true,
+      orderBy: 'startTime',
     });
 
+    const allDayEvents = eventsResponse.data.items
+      .filter(event => {
+        const start = new Date(event.start.date || event.start.dateTime);
+        return !event.start.dateTime; // true if it's an all-day event
+      })
+      .map(event => ({
+        start: new Date(event.start.date),
+        end: new Date(event.end.date)
+      }));
+
+    // Then get free/busy information
     const freeBusy = await calendar.freebusy.query({
       requestBody: {
         timeMin: timeMin.toISOString(),
@@ -110,11 +83,9 @@ export async function POST(req) {
       }))
       .sort((a, b) => a.start.getTime() - b.start.getTime());
 
-    console.log('Busy periods:', busyPeriods);
-
     const availableSlots = [];
-    const slotDuration = duration * 60 * 1000; // Convert minutes to milliseconds
-    const stepSize = 30 * 60 * 1000; // 30-minute increments
+    const slotDuration = duration * 60 * 1000;
+    const stepSize = 30 * 60 * 1000;
 
     for (
       let currentTime = timeMin.getTime();
@@ -123,6 +94,12 @@ export async function POST(req) {
     ) {
       const slotStart = new Date(currentTime);
       const slotEnd = new Date(currentTime + slotDuration);
+
+      // Skip times outside 9 AM - 5 PM
+      const hour = slotStart.getHours();
+      if (hour < 9 || hour >= 17) {
+        continue;
+      }
 
       // Skip if slot ends after 5 PM
       if (slotEnd.getHours() >= 17) {
@@ -144,6 +121,18 @@ export async function POST(req) {
         continue;
       }
 
+      // Skip all-day events
+      const isAllDayEvent = allDayEvents.some(event => {
+        const eventStart = startOfDay(event.start);
+        const eventEnd = endOfDay(event.end);
+        return slotStart >= eventStart && slotStart < eventEnd;
+      });
+
+      if (isAllDayEvent) {
+        continue;
+      }
+
+      // Check against busy periods
       const isAvailable = !busyPeriods.some(busy => (
         (slotStart >= busy.start && slotStart < busy.end) ||
         (slotEnd > busy.start && slotEnd <= busy.end) ||
@@ -151,11 +140,6 @@ export async function POST(req) {
       ));
 
       if (isAvailable) {
-        console.log('Found available slot:', {
-          start: slotStart.toISOString(),
-          end: slotEnd.toISOString()
-        });
-
         availableSlots.push({
           start: slotStart.toISOString(),
           end: slotEnd.toISOString(),
