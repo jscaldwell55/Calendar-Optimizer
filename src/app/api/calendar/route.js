@@ -72,7 +72,7 @@ export async function POST(req) {
             { id: 'primary' },
             ...attendees.map(email => ({ id: email }))
           ],
-          timeZone: preferences.timezone || 'America/New_York',
+          timeZone: preferences.timezone || 'system',
         },
       });
 
