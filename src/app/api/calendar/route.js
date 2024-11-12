@@ -8,26 +8,12 @@ import {
   isWithinInterval,
   isWeekend,
   parseISO,
-  format,
+  startOfDay,
 } from 'date-fns';
 
-const BUSINESS_START_HOUR = 9;  // Local time
-const BUSINESS_END_HOUR = 17;   // Local time
+const BUSINESS_START_HOUR = 9;  // 9 AM Local time
+const BUSINESS_END_HOUR = 17;   // 5 PM Local time
 const MAX_SUGGESTIONS = 5;
-
-// US Holidays 2024 (in CST/America/Chicago)
-const US_HOLIDAYS_2024 = [
-  '2024-01-01T06:00:00Z', // New Year's Day
-  '2024-01-15T06:00:00Z', // Martin Luther King Jr. Day
-  '2024-02-19T06:00:00Z', // Presidents' Day
-  '2024-05-27T05:00:00Z', // Memorial Day
-  '2024-07-04T05:00:00Z', // Independence Day
-  '2024-09-02T05:00:00Z', // Labor Day
-  '2024-10-14T05:00:00Z', // Columbus Day
-  '2024-11-11T06:00:00Z', // Veterans Day
-  '2024-11-28T06:00:00Z', // Thanksgiving Day
-  '2024-12-25T06:00:00Z', // Christmas Day
-];
 
 const timeQuotes = [
   "Tell me, what is it you plan to do with your one wild and precious life?",
@@ -37,30 +23,36 @@ const timeQuotes = [
   "Hope is the thing with feathers that perches in the soul, And sings the tune without the words, and never stops at all.",
 ];
 
-// Helper function to convert UTC to local time string
-function formatLocalTime(utcString, timezone) {
-  return new Date(utcString).toLocaleTimeString('en-US', {
+// Helper to get UTC hours offset for a timezone
+function getTimezoneOffset(timezone) {
+  const date = new Date();
+  const utcDate = new Date(date.toLocaleString('en-US', { timeZone: 'UTC' }));
+  const tzDate = new Date(date.toLocaleString('en-US', { timeZone: timezone }));
+  return (tzDate - utcDate) / (60 * 60 * 1000);
+}
+
+// Helper to convert local hour to UTC
+function localToUTCHour(localHour, timezone) {
+  const offset = getTimezoneOffset(timezone);
+  return (localHour - offset) % 24;
+}
+
+// Helper to get start of business day in UTC
+function getBusinessDayStart(date, timezone) {
+  const localDate = startOfDay(date);
+  const utcHour = localToUTCHour(BUSINESS_START_HOUR, timezone);
+  localDate.setUTCHours(utcHour, 0, 0, 0);
+  return localDate;
+}
+
+// Helper function to format time in 12-hour format
+function formatTime(date, timezone) {
+  return date.toLocaleTimeString('en-US', {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
     timeZone: timezone
   });
-}
-
-// Helper function to get day of week in local timezone
-function getLocalDayOfWeek(utcString, timezone) {
-  return new Date(utcString).toLocaleDateString('en-US', {
-    weekday: 'long',
-    timeZone: timezone
-  });
-}
-
-// Helper to get UTC time for local business hours
-function getBusinessHoursUTC(date, timezone, isStart = true) {
-  const hour = isStart ? BUSINESS_START_HOUR : BUSINESS_END_HOUR;
-  const localTime = new Date(date);
-  localTime.setHours(hour, 0, 0, 0);
-  return localTime.toISOString();
 }
 
 export async function POST(req) {
@@ -98,38 +90,46 @@ export async function POST(req) {
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
-    // Set up initial time range in UTC
+    // Calculate UTC hours for business hours
+    const startHourUTC = localToUTCHour(BUSINESS_START_HOUR, timezone);
+    const endHourUTC = localToUTCHour(BUSINESS_END_HOUR, timezone);
+
+    // Set up initial time range
     const now = new Date();
-    let timeMin = getBusinessHoursUTC(now, timezone, true);
-    
+    let timeMin = getBusinessDayStart(now, timezone);
+
+    // Move to next day if current time is past business hours
+    const currentLocalHour = now.getHours();
+    if (currentLocalHour >= BUSINESS_END_HOUR) {
+      timeMin = getBusinessDayStart(addDays(now, 1), timezone);
+    }
+
     // Calculate end time based on search range
     let timeMax;
     switch (searchRange) {
       case 'hour':
-        timeMax = getBusinessHoursUTC(addDays(now, 1), timezone, false);
+        timeMax = addDays(timeMin, 1);
         break;
       case 'week':
-        timeMax = getBusinessHoursUTC(addWeeks(now, 1), timezone, false);
+        timeMax = addWeeks(timeMin, 1);
         break;
       case 'month':
-        timeMax = getBusinessHoursUTC(addMonths(now, 1), timezone, false);
+        timeMax = addMonths(timeMin, 1);
         break;
       default:
-        timeMax = getBusinessHoursUTC(addDays(now, 1), timezone, false);
+        timeMax = addDays(timeMin, 1);
     }
 
     // Set up free/busy query
     const freeBusyRequest = {
-      timeMin,
-      timeMax,
+      timeMin: timeMin.toISOString(),
+      timeMax: timeMax.toISOString(),
       timeZone: timezone,
       items: [
         { id: 'primary' },
         ...attendees.map(email => ({ id: email }))
       ]
     };
-
-    console.log('Free/Busy Request:', freeBusyRequest);
 
     // Get free/busy information
     const freeBusy = await calendar.freebusy.query({
@@ -146,18 +146,21 @@ export async function POST(req) {
 
     // Find available slots
     const availableSlots = [];
-    let currentTime = new Date(timeMin);
-    const endTime = new Date(timeMax);
+    let currentTime = timeMin;
 
-    while (availableSlots.length < MAX_SUGGESTIONS && currentTime < endTime) {
+    while (availableSlots.length < MAX_SUGGESTIONS && currentTime < timeMax) {
       const slotEnd = new Date(currentTime.getTime() + durationMinutes * 60000);
-      
-      // Convert to local time for checking business hours
-      const localHour = new Date(currentTime).getHours();
-      
+
+      // Get local hour for the current time
+      const localHour = new Date(currentTime).toLocaleString('en-US', {
+        hour: 'numeric',
+        hour12: false,
+        timeZone: timezone
+      });
+
       // Skip if outside business hours
       if (localHour < BUSINESS_START_HOUR || localHour >= BUSINESS_END_HOUR) {
-        currentTime = new Date(currentTime.setHours(BUSINESS_START_HOUR, 0, 0, 0));
+        currentTime = new Date(currentTime.setUTCHours(startHourUTC, 0, 0, 0));
         currentTime = addDays(currentTime, 1);
         continue;
       }
@@ -165,21 +168,14 @@ export async function POST(req) {
       // Skip weekends
       if (isWeekend(currentTime)) {
         currentTime = addDays(currentTime, currentTime.getDay() === 6 ? 2 : 1);
-        currentTime.setHours(BUSINESS_START_HOUR, 0, 0, 0);
-        continue;
-      }
-
-      // Skip holidays
-      if (US_HOLIDAYS_2024.includes(currentTime.toISOString())) {
-        currentTime = addDays(currentTime, 1);
-        currentTime.setHours(BUSINESS_START_HOUR, 0, 0, 0);
+        currentTime.setUTCHours(startHourUTC, 0, 0, 0);
         continue;
       }
 
       // Skip Fridays if specified
       if (preferences.noFridays && currentTime.getDay() === 5) {
         currentTime = addDays(currentTime, 3);
-        currentTime.setHours(BUSINESS_START_HOUR, 0, 0, 0);
+        currentTime.setUTCHours(startHourUTC, 0, 0, 0);
         continue;
       }
 
@@ -190,16 +186,16 @@ export async function POST(req) {
       );
 
       if (isSlotAvailable) {
-        const slotStartUTC = currentTime.toISOString();
-        const slotEndUTC = slotEnd.toISOString();
-        
         availableSlots.push({
-          start: slotStartUTC,
-          end: slotEndUTC,
+          start: currentTime.toISOString(),
+          end: slotEnd.toISOString(),
           localTimes: [{
-            dayOfWeek: getLocalDayOfWeek(slotStartUTC, timezone),
-            localStart: formatLocalTime(slotStartUTC, timezone),
-            localEnd: formatLocalTime(slotEndUTC, timezone)
+            dayOfWeek: currentTime.toLocaleDateString('en-US', {
+              weekday: 'long',
+              timeZone: timezone
+            }),
+            localStart: formatTime(currentTime, timezone),
+            localEnd: formatTime(slotEnd, timezone)
           }]
         });
       }
