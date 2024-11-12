@@ -123,14 +123,11 @@ export async function POST(req) {
 
     console.log('Busy periods found:', busyPeriods);
 
- // Helper function to check if time is within business hours (9 AM to 5 PM)
-const isWithinBusinessHours = (date) => {
-  const hours = date.getHours();
-  return hours >= 9 && hours < 17; // 9 AM <= hours < 5 PM
-};
+// Initialize `timeMin` to the current date and time
+let timeMin = new Date(); // Declare `timeMin` only once
 
 // Adjust `timeMin` to start at the next available business hour if it's outside of 9 AM - 5 PM
-const timeMin = currentHour.getHours();
+const currentHour = timeMin.getHours();
 if (currentHour >= 17 || currentHour < 9) {
   // Move to the start of the next day at 9 AM
   timeMin = startOfDay(addDays(timeMin, 1));
@@ -163,7 +160,6 @@ let currentTime = timeMin.getTime();
 while (currentTime < timeMax.getTime() && availableSlots.length < 5) {
   const slotStart = new Date(currentTime);
   const slotEnd = new Date(currentTime + slotDuration);
-
 
   console.log('Checking slot:', {
     start: slotStart.toLocaleString(),
