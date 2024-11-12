@@ -7,19 +7,9 @@
 - Set meeting duration (15 min, 30 min, 1 hour) 
 - Optional: Exclude Fridays
 - Get up to 5 available meeting times
-- Google Sign out button
-
-- **Optimizations**: 
-- Only checks 9 AM - 5 PM
-- Skips weekends
-- Skips major US holidays 2024
 - Works with pasted lists of emails
 - Multiple email separator support (commas, spaces, newlines)
-
-## Requirements
-
-- Google Account (works with both @gmail.com and Google Workspace domains)
-- Calendar access permission
+- Google Sign out button
 
 ## Time Slot Logic
 
