@@ -4,12 +4,7 @@ import { useSession, signIn } from 'next-auth/react';
 import { useState } from 'react';
 
 const POEMS = [
-  "Time is the wisest counselor of all. - Pericles",
-  "Time stays long enough for anyone who will use it. - Leonardo da Vinci",
   "I love you when you call me to admire, A jet's pink trail above the sunset fire. - Vladimir Nabokov",
-  "The only reason for time is so that everything doesn't happen at once. - Albert Einstein",
-  "Time and tide wait for no man. - Geoffrey Chaucer",
-  "Better three hours too soon than a minute too late. - William Shakespeare",
   "The King was not mad; he was just an eccentric living in a world of dreams. - Empress Elizabeth of Austria",
   "Go, sir, gallop and don’t forget that the world was made in six days. You can ask me for anything but not time. - Napoleon ",
   "And as I sat there, brooding on the old, unknown world, I thought of Gatsby’s wonder when he first picked out the green light at the end of Daisy’s dock. - F Scott Fitzgerald.",
@@ -20,14 +15,6 @@ const POEMS = [
   "A middleman’s business is to make himself a necessary evil. - William Gibson",
   "Some work of noble note, may yet be done, not unbecoming men that strove with Gods. - Tennyson.",
   "No. I'm in touch with humanity. - Patrick Bateman",
-  "I am the daughter of Earth and Water, And the nursling of the Sky. - Shelley",
-  "My heart leaps up when I behold, A rainbow in the sky. - Wordsworth",
-  "Keep close to Nature's heart... and break clear away, once in a while, and climb a mountain or spend a week in the woods. - John Muir",
-  "Live in the sunshine, swim in the sea, drink the wild air. - Ralph Waldo",
-  "I have nature and art and poetry, and if that is not enough, what is enough? - van Gogh",
-  "Land really is the best art. - Andy Warhol",
-  "One must maintain a little bit of summer, even in the middle of winter. - Thoreau",
-  "The sun is new each day. - Heraclitus",
 ];
 
 export default function Home() {
