@@ -115,7 +115,7 @@ export default function MeetingScheduler() {
             onChange={(e) => setSearchRange(e.target.value)}
             className="w-[180px] px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <option value="hour">Next Hour</option>
+            <option value="day">Next Day</option>
             <option value="week">Next Week</option>
             <option value="month">Next Month</option>
           </select>
