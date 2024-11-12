@@ -211,7 +211,10 @@ export async function POST(req) {
         
       currentTime += stepSize;  
     }
- 
+
+// Select a random time quote
+    const randomQuote = timeQuotes[Math.floor(Math.random() * timeQuotes.length)];
+    
     return new Response(
       JSON.stringify({
         suggestions: availableSlots,
