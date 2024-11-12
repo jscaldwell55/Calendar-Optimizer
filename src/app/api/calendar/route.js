@@ -1,7 +1,7 @@
 import { google } from 'googleapis';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]/route';
-import { addDays, addHours, addMonths, parseISO, isWithinInterval, isWeekend, getDay, isSameDay } from 'date-fns';
+import { addDays, addWeek, addMonths, parseISO, isWithinInterval, isWeekend, getDay, isSameDay } from 'date-fns';
 
 // Define US holidays in 2024
 const usHolidays2024 = [
