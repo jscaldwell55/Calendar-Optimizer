@@ -66,158 +66,146 @@ export async function POST(req) {
     // Get timezone from preferences or system default
     const userTimezone = preferences.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-    try {
-      // Query for busy periods
-      const freeBusy = await calendar.freebusy.query({
-        requestBody: {
-          timeMin: timeMin.toISOString(),
-          timeMax: timeMax.toISOString(),
-          items: [
-            { id: 'primary' },
-            ...attendees.map(email => ({ id: email }))
-          ],
-          timeZone: userTimezone,
-        },
+    // Query for busy periods
+    const freeBusy = await calendar.freebusy.query({
+      requestBody: {
+        timeMin: timeMin.toISOString(),
+        timeMax: timeMax.toISOString(),
+        items: [
+          { id: 'primary' },
+          ...attendees.map(email => ({ id: email }))
+        ],
+        timeZone: userTimezone,
+      },
+    });
+
+    console.log('FreeBusy response:', JSON.stringify(freeBusy.data, null, 2));
+
+    // Process and sort busy periods
+    const busyPeriods = Object.values(freeBusy.data.calendars)
+      .flatMap(calendar => calendar.busy || [])
+      .map(period => ({
+        start: new Date(period.start),
+        end: new Date(period.end)
+      }))
+      .sort((a, b) => a.start.getTime() - b.start.getTime());
+
+    // Find available slots
+    const availableSlots = [];
+    const slotDuration = duration * 60 * 1000; // Convert minutes to milliseconds
+    const stepSize = 30 * 60 * 1000; // 30-minute intervals
+
+    for (
+      let currentTime = timeMin.getTime();
+      currentTime < timeMax.getTime() && availableSlots.length < 10;
+      currentTime += stepSize
+    ) {
+      const slotStart = new Date(currentTime);
+      const slotEnd = new Date(currentTime + slotDuration);
+
+      // Convert times to user's timezone
+      const slotStartInTz = new Date(slotStart.toLocaleString('en-US', { timeZone: userTimezone }));
+      const slotEndInTz = new Date(slotEnd.toLocaleString('en-US', { timeZone: userTimezone }));
+
+      const slotStartHours = slotStartInTz.getHours();
+      const slotStartMinutes = slotStartInTz.getMinutes();
+      const slotEndHours = slotEndInTz.getHours();
+      const slotEndMinutes = slotEndInTz.getMinutes();
+
+      // Debug logging
+      console.log('Checking slot:', {
+        start: slotStart.toISOString(),
+        end: slotEnd.toISOString(),
+        startHours: slotStartHours,
+        endHours: slotEndHours,
+        timezone: userTimezone
       });
 
-      console.log('FreeBusy response:', JSON.stringify(freeBusy.data, null, 2));
-
-      // Process and sort busy periods
-      const busyPeriods = Object.values(freeBusy.data.calendars)
-        .flatMap(calendar => calendar.busy || [])
-        .map(period => ({
-          start: new Date(period.start),
-          end: new Date(period.end)
-        }))
-        .sort((a, b) => a.start.getTime() - b.start.getTime());
-
-      // Find available slots
-      const availableSlots = [];
-      const slotDuration = duration * 60 * 1000; // Convert minutes to milliseconds
-      const stepSize = 30 * 60 * 1000; // 30-minute intervals
-
-      for (
-        let currentTime = timeMin.getTime();
-        currentTime < timeMax.getTime() && availableSlots.length < 10;
-        currentTime += stepSize
+      // Check business hours (9 AM - 5 PM)
+      if (
+        slotStartHours < 9 || 
+        slotEndHours > 17 ||
+        (slotEndHours === 17 && slotEndMinutes > 0)
       ) {
-        const slotStart = new Date(currentTime);
-        const slotEnd = new Date(currentTime + slotDuration);
-
-        // Convert times to user's timezone
-        const slotStartInTz = new Date(slotStart.toLocaleString('en-US', { timeZone: userTimezone }));
-        const slotEndInTz = new Date(slotEnd.toLocaleString('en-US', { timeZone: userTimezone }));
-
-        const slotStartHours = slotStartInTz.getHours();
-        const slotStartMinutes = slotStartInTz.getMinutes();
-        const slotEndHours = slotEndInTz.getHours();
-        const slotEndMinutes = slotEndInTz.getMinutes();
-
-        // Debug logging
-        console.log('Checking slot:', {
-          start: slotStart.toISOString(),
-          end: slotEnd.toISOString(),
-          startHours: slotStartHours,
-          endHours: slotEndHours,
-          timezone: userTimezone
-        });
-
-        // Check business hours (9 AM - 5 PM)
-        if (
-          slotStartHours < 9 || 
-          slotEndHours > 17 ||
-          (slotEndHours === 17 && slotEndMinutes > 0)
-        ) {
-          console.log('Slot outside business hours, skipping');
-          continue;
-        }
-
-        // Skip weekends
-        if (isWeekend(slotStart)) {
-          console.log('Slot on weekend, skipping');
-          continue;
-        }
-
-        // Skip holidays
-        if (usHolidays2024.some(holiday => isSameDay(slotStart, holiday))) {
-          console.log('Slot on holiday, skipping');
-          continue;
-        }
-
-        // Skip Fridays if specified
-        if (preferences.noFridays && getDay(slotStart) === 5) {
-          console.log('Slot on Friday, skipping due to preferences');
-          continue;
-        }
-
-        // Improved busy period checking
-        const isAvailable = !busyPeriods.some(busy => {
-          const overlap = (
-            (slotStart >= busy.start && slotStart < busy.end) ||  // Slot starts during busy period
-            (slotEnd > busy.start && slotEnd <= busy.end) ||      // Slot ends during busy period
-            (slotStart <= busy.start && slotEnd >= busy.end)      // Slot completely contains busy period
-          );
-          
-          if (overlap) {
-            console.log('Slot overlaps with busy period:', {
-              slotStart: slotStart.toISOString(),
-              slotEnd: slotEnd.toISOString(),
-              busyStart: busy.start.toISOString(),
-              busyEnd: busy.end.toISOString()
-            });
-          }
-          
-          return overlap;
-        });
-
-        if (isAvailable) {
-          console.log('Found available slot:', {
-            start: slotStart.toISOString(),
-            end: slotEnd.toISOString()
-          });
-          
-          availableSlots.push({
-            start: slotStart.toISOString(),
-            end: slotEnd.toISOString(),
-          });
-        }
+        console.log('Slot outside business hours, skipping');
+        continue;
       }
 
-      // Time-themed quotes for response
-      const timeQuotes = [
-        "Time is the most valuable thing a man can spend. - Theophrastus",
-        "Time is what we want most, but what we use worst. - William Penn",
-        "The future is something which everyone reaches at the rate of sixty minutes an hour. - C.S. Lewis",
-        "Lost time is never found again. - Benjamin Franklin",
-        "Time and tide wait for no man. - Geoffrey Chaucer"
-      ];
-      const randomQuote = timeQuotes[Math.floor(Math.random() * timeQuotes.length)];
+      // Skip weekends
+      if (isWeekend(slotStart)) {
+        console.log('Slot on weekend, skipping');
+        continue;
+      }
 
-      // Return successful response
-      return new Response(
-        JSON.stringify({
-          suggestions: availableSlots,
-          quote: randomQuote,
-          metadata: {
-            searchRange,
-            timeMin: timeMin.toISOString(),
-            timeMax: timeMax.toISOString(),
-            timezone: userTimezone
-          }
-        }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
-      );
+      // Skip holidays
+      if (usHolidays2024.some(holiday => isSameDay(slotStart, holiday))) {
+        console.log('Slot on holiday, skipping');
+        continue;
+      }
 
-    } catch (calendarError) {
-      console.error('Calendar API error:', calendarError);
-      return new Response(
-        JSON.stringify({
-          error: 'Calendar API error',
-          details: calendarError.message
-        }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
-      );
+      // Skip Fridays if specified
+      if (preferences.noFridays && getDay(slotStart) === 5) {
+        console.log('Slot on Friday, skipping due to preferences');
+        continue;
+      }
+
+      // Improved busy period checking
+      const isAvailable = !busyPeriods.some(busy => {
+        const overlap = (
+          (slotStart >= busy.start && slotStart < busy.end) ||  // Slot starts during busy period
+          (slotEnd > busy.start && slotEnd <= busy.end) ||      // Slot ends during busy period
+          (slotStart <= busy.start && slotEnd >= busy.end)      // Slot completely contains busy period
+        );
+        
+        if (overlap) {
+          console.log('Slot overlaps with busy period:', {
+            slotStart: slotStart.toISOString(),
+            slotEnd: slotEnd.toISOString(),
+            busyStart: busy.start.toISOString(),
+            busyEnd: busy.end.toISOString()
+          });
+        }
+        
+        return overlap;
+      });
+
+      if (isAvailable) {
+        console.log('Found available slot:', {
+          start: slotStart.toISOString(),
+          end: slotEnd.toISOString()
+        });
+        
+        availableSlots.push({
+          start: slotStart.toISOString(),
+          end: slotEnd.toISOString(),
+        });
+      }
     }
+
+    // Time-themed quotes for response
+    const timeQuotes = [
+      "Time is the most valuable thing a man can spend. - Theophrastus",
+      "Time is what we want most, but what we use worst. - William Penn",
+      "The future is something which everyone reaches at the rate of sixty minutes an hour. - C.S. Lewis",
+      "Lost time is never found again. - Benjamin Franklin",
+      "Time and tide wait for no man. - Geoffrey Chaucer"
+    ];
+    const randomQuote = timeQuotes[Math.floor(Math.random() * timeQuotes.length)];
+
+    // Return successful response
+    return new Response(
+      JSON.stringify({
+        suggestions: availableSlots,
+        quote: randomQuote,
+        metadata: {
+          searchRange,
+          timeMin: timeMin.toISOString(),
+          timeMax: timeMax.toISOString(),
+          timezone: userTimezone
+        }
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
 
   } catch (error) {
     console.error('General error:', error);
@@ -229,3 +217,4 @@ export async function POST(req) {
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
   }
+}
