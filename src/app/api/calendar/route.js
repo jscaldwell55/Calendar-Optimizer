@@ -104,16 +104,8 @@ export async function POST(req) {
 
         if (isAvailable) {
           availableSlots.push({
-            start: slotStart.toLocaleString('en-US', { 
-              hour: 'numeric', 
-              minute: 'numeric', 
-              hour12: true 
-            }),
-            end: slotEnd.toLocaleString('en-US', { 
-              hour: 'numeric', 
-              minute: 'numeric', 
-              hour12: true 
-            }),
+            start: slotStart.toISOString(),
+            end: slotEnd.toISOString(),
           });
         }
       }
@@ -129,6 +121,7 @@ export async function POST(req) {
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
       );
+
     } catch (calendarError) {
       console.error('Calendar API error:', calendarError);
       return new Response(
@@ -139,6 +132,7 @@ export async function POST(req) {
         { status: 500, headers: { 'Content-Type': 'application/json' } }
       );
     }
+
   } catch (error) {
     console.error('General error:', error);
     return new Response(
