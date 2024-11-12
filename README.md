@@ -7,7 +7,6 @@
 - Set meeting duration (15 min, 30 min, 1 hour) 
 - Optional: Exclude Fridays
 - Get up to 5 available meeting times
-- Generates random fun quote with results 
 - Signs out from Google automatically after 10 minutes of inactivity
 
 - **Optimizations**: 
