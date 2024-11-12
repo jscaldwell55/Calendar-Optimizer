@@ -15,23 +15,8 @@ import {
   setMinutes,
   parseISO,
   differenceInDays,
-  differenceInWeeks,
-  differenceInMonths,
 } from 'date-fns';
-
-// Define US holidays in 2024
-const usHolidays2024 = [
-  new Date('2024-01-01'), // New Year's Day
-  new Date('2024-01-15'), // Martin Luther King Jr. Day
-  new Date('2024-02-19'), // Presidents' Day
-  new Date('2024-05-27'), // Memorial Day
-  new Date('2024-07-04'), // Independence Day
-  new Date('2024-09-02'), // Labor Day
-  new Date('2024-10-14'), // Columbus Day
-  new Date('2024-11-11'), // Veterans Day
-  new Date('2024-11-28'), // Thanksgiving Day
-  new Date('2024-12-25'), // Christmas Day
-];
+import { zonedTimeToUtc, utcToZonedTime, formatInTimeZone } from 'date-fns-tz';
 
 const timeQuotes = [
   "The two most powerful warriors are patience and time. - Leo Tolstoy",
@@ -45,54 +30,96 @@ const BUSINESS_START_HOUR = 9;
 const BUSINESS_END_HOUR = 17;
 const MAX_SUGGESTIONS = 10;
 
-// Helper to check if a date is within business hours (9 AM - 5 PM)
-function isWithinBusinessHours(date) {
-  const hours = date.getHours();
-  const minutes = date.getMinutes();
+// Helper to get US holidays adjusted for timezone
+function getHolidaysForTimezone(timezone) {
+  return [
+    new Date('2024-01-01'), // New Year's Day
+    new Date('2024-01-15'), // Martin Luther King Jr. Day
+    new Date('2024-02-19'), // Presidents' Day
+    new Date('2024-05-27'), // Memorial Day
+    new Date('2024-07-04'), // Independence Day
+    new Date('2024-09-02'), // Labor Day
+    new Date('2024-10-14'), // Columbus Day
+    new Date('2024-11-11'), // Veterans Day
+    new Date('2024-11-28'), // Thanksgiving Day
+    new Date('2024-12-25'), // Christmas Day
+  ].map(date => utcToZonedTime(date, timezone));
+}
+
+// Helper to convert UTC date to user's timezone
+function utcToUserLocal(date, timezone) {
+  return utcToZonedTime(date, timezone);
+}
+
+// Helper to convert user's local date to UTC
+function userLocalToUtc(date, timezone) {
+  return zonedTimeToUtc(date, timezone);
+}
+
+// Helper to check if a date is within business hours in user's timezone
+function isWithinBusinessHours(utcDate, timezone) {
+  const localDate = utcToUserLocal(utcDate, timezone);
+  const hours = localDate.getHours();
+  const minutes = localDate.getMinutes();
   return (hours === BUSINESS_START_HOUR && minutes >= 0) || 
          (hours > BUSINESS_START_HOUR && hours < BUSINESS_END_HOUR) ||
          (hours === BUSINESS_END_HOUR && minutes === 0);
 }
 
-// Helper to get next valid business day start
-function getNextBusinessDayStart(date) {
-  let nextDay = startOfDay(date);
+// Helper to get next valid business day start in user's timezone
+function getNextBusinessDayStart(utcDate, timezone) {
+  const holidays = getHolidaysForTimezone(timezone);
+  let localDate = utcToUserLocal(utcDate, timezone);
+  let nextDay = startOfDay(localDate);
   
   // If current time is past business hours, move to next day
-  if (date.getHours() >= BUSINESS_END_HOUR) {
+  if (localDate.getHours() >= BUSINESS_END_HOUR) {
     nextDay = addDays(nextDay, 1);
   }
   
   // Skip weekends and holidays
-  while (isWeekend(nextDay) || usHolidays2024.some(holiday => isSameDay(nextDay, holiday))) {
+  while (isWeekend(nextDay) || holidays.some(holiday => isSameDay(nextDay, holiday))) {
     nextDay = addDays(nextDay, 1);
   }
   
-  return setMinutes(setHours(nextDay, BUSINESS_START_HOUR), 0);
+  // Set to business start hour and convert back to UTC
+  const localBusinessStart = setMinutes(setHours(nextDay, BUSINESS_START_HOUR), 0);
+  return userLocalToUtc(localBusinessStart, timezone);
 }
 
 // Helper to calculate duration end date
-function calculateEndDate(startDate, durationType) {
+function calculateEndDate(startUtc, durationType, timezone) {
+  const startLocal = utcToUserLocal(startUtc, timezone);
+  let endLocal;
+  
   switch (durationType) {
     case '1440': // 1 day
-      return endOfDay(startDate);
+      endLocal = endOfDay(startLocal);
+      break;
     case '10080': // 1 week
-      return endOfDay(addDays(startDate, 6));
-    case '43200': // 1 month (approximate)
-      return endOfDay(addMonths(startDate, 1));
+      endLocal = endOfDay(addDays(startLocal, 6));
+      break;
+    case '43200': // 1 month
+      endLocal = endOfDay(addMonths(startLocal, 1));
+      break;
     default:
-      return endOfDay(startDate);
+      endLocal = endOfDay(startLocal);
   }
+  
+  return userLocalToUtc(endLocal, timezone);
 }
 
 // Helper to check if a period includes holidays or weekends
-function includesHolidaysOrWeekends(start, end) {
-  const days = differenceInDays(end, start);
+function includesHolidaysOrWeekends(startUtc, endUtc, timezone) {
+  const holidays = getHolidaysForTimezone(timezone);
+  const startLocal = utcToUserLocal(startUtc, timezone);
+  const endLocal = utcToUserLocal(endUtc, timezone);
+  const days = differenceInDays(endLocal, startLocal);
   
   for (let i = 0; i <= days; i++) {
-    const currentDate = addDays(start, i);
+    const currentDate = addDays(startLocal, i);
     if (isWeekend(currentDate) || 
-        usHolidays2024.some(holiday => isSameDay(currentDate, holiday))) {
+        holidays.some(holiday => isSameDay(currentDate, holiday))) {
       return true;
     }
   }
@@ -110,9 +137,21 @@ export async function POST(req) {
     }
 
     const body = await req.json();
-    const { attendees, searchRange, duration: durationStr, preferences } = body;
+    const { 
+      attendees, 
+      searchRange, 
+      duration: durationStr, 
+      preferences,
+      timezone // Now required from client
+    } = body;
+
+    if (!timezone) {
+      return new Response(
+        JSON.stringify({ error: 'Timezone is required' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
     
-    // Convert duration string to minutes
     const duration = {
       '1440': 1440,  // 1 day
       '10080': 10080, // 1 week
@@ -131,14 +170,14 @@ export async function POST(req) {
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
-    // Set search start time to next available business day
-    const timeMin = getNextBusinessDayStart(new Date());
+    // Set search start time to next available business day (in UTC)
+    const timeMin = getNextBusinessDayStart(new Date(), timezone);
 
-    // Calculate search end time based on range
+    // Calculate search end time based on range (in UTC)
     let timeMax;
     switch (searchRange) {
       case 'hour':
-        timeMax = addDays(timeMin, 7); // Extended to give enough room for longer durations
+        timeMax = addDays(timeMin, 7);
         break;
       case 'week':
         timeMax = addMonths(timeMin, 1);
@@ -150,27 +189,29 @@ export async function POST(req) {
         timeMax = addMonths(timeMin, 1);
     }
 
-    // Get all-day events
+    // Get all-day events with user's timezone
     const eventsResponse = await calendar.events.list({
       calendarId: 'primary',
       timeMin: timeMin.toISOString(),
       timeMax: timeMax.toISOString(),
       singleEvents: true,
       orderBy: 'startTime',
+      timeZone: timezone,
     });
 
     const allDayEvents = eventsResponse.data.items
       .filter(event => event.start.date != null)
       .map(event => ({
-        start: parseISO(event.start.date),
-        end: parseISO(event.end.date)
+        start: parseISO(event.start.date + 'T00:00:00'),
+        end: parseISO(event.end.date + 'T00:00:00')
       }));
 
-    // Get free/busy information for all attendees
+    // Get free/busy information for all attendees in user's timezone
     const freeBusy = await calendar.freebusy.query({
       requestBody: {
         timeMin: timeMin.toISOString(),
         timeMax: timeMax.toISOString(),
+        timeZone: timezone,
         items: [
           { id: 'primary' },
           ...attendees.map(email => ({ id: email }))
@@ -191,34 +232,35 @@ export async function POST(req) {
     let currentTime = timeMin;
 
     while (availableSlots.length < MAX_SUGGESTIONS && currentTime < timeMax) {
-      const slotEnd = calculateEndDate(currentTime, durationStr);
+      const slotEnd = calculateEndDate(currentTime, durationStr, timezone);
+      const currentLocal = utcToUserLocal(currentTime, timezone);
 
       // Skip if slot includes weekends or holidays (for multi-day periods)
-      if (duration >= 1440 && includesHolidaysOrWeekends(currentTime, slotEnd)) {
-        currentTime = getNextBusinessDayStart(addDays(currentTime, 1));
+      if (duration >= 1440 && includesHolidaysOrWeekends(currentTime, slotEnd, timezone)) {
+        currentTime = getNextBusinessDayStart(addDays(currentLocal, 1), timezone);
         continue;
       }
 
       // Skip if it's a Friday and noFridays is true
-      if (preferences.noFridays && getDay(currentTime) === 5) {
-        currentTime = getNextBusinessDayStart(addDays(currentTime, 3)); // Skip to Monday
+      if (preferences.noFridays && getDay(currentLocal) === 5) {
+        currentTime = getNextBusinessDayStart(addDays(currentLocal, 3), timezone);
         continue;
       }
 
       // Skip if there's an all-day event
       const hasAllDayEvent = allDayEvents.some(event =>
-        isWithinInterval(currentTime, { 
+        isWithinInterval(currentLocal, { 
           start: startOfDay(event.start), 
           end: endOfDay(event.end) 
         }) ||
-        isWithinInterval(slotEnd, {
+        isWithinInterval(utcToUserLocal(slotEnd, timezone), {
           start: startOfDay(event.start),
           end: endOfDay(event.end)
         })
       );
 
       if (hasAllDayEvent) {
-        currentTime = getNextBusinessDayStart(addDays(currentTime, 1));
+        currentTime = getNextBusinessDayStart(addDays(currentLocal, 1), timezone);
         continue;
       }
 
@@ -233,17 +275,18 @@ export async function POST(req) {
         availableSlots.push({
           start: currentTime.toISOString(),
           end: slotEnd.toISOString(),
+          localStart: formatInTimeZone(currentTime, timezone, "yyyy-MM-dd'T'HH:mm:ssXXX"),
+          localEnd: formatInTimeZone(slotEnd, timezone, "yyyy-MM-dd'T'HH:mm:ssXXX")
         });
-        currentTime = getNextBusinessDayStart(addDays(currentTime, 1));
+        currentTime = getNextBusinessDayStart(addDays(currentLocal, 1), timezone);
       } else {
-        // Move to the end of the conflicting busy period
         const conflictingPeriod = busyPeriods.find(busy =>
           isWithinInterval(currentTime, { start: busy.start, end: busy.end }) ||
           currentTime <= busy.start
         );
         currentTime = conflictingPeriod ? 
-          getNextBusinessDayStart(new Date(conflictingPeriod.end)) : 
-          getNextBusinessDayStart(addDays(currentTime, 1));
+          getNextBusinessDayStart(new Date(conflictingPeriod.end), timezone) : 
+          getNextBusinessDayStart(addDays(currentLocal, 1), timezone);
       }
     }
 
@@ -258,6 +301,7 @@ export async function POST(req) {
           searchRange,
           timeMin: timeMin.toISOString(),
           timeMax: timeMax.toISOString(),
+          timezone: timezone
         }
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
