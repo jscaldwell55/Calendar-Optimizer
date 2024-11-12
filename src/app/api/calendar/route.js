@@ -86,7 +86,7 @@ export async function POST(req) {
         }))
         .sort((a, b) => a.start.getTime() - b.start.getTime());
 
-     // Find available slots
+ // Find available slots
 const availableSlots = [];
 const slotDuration = duration * 60 * 1000;
 const stepSize = 30 * 60 * 1000;
@@ -101,8 +101,18 @@ for (
 
   // Check if the slot falls within business hours (9 AM - 5 PM)
   const slotStartHours = slotStart.getHours();
+  const slotStartMinutes = slotStart.getMinutes();
   const slotEndHours = slotEnd.getHours();
-  if (slotStartHours < 9 || slotEndHours > 17) continue;
+  const slotEndMinutes = slotEnd.getMinutes();
+
+  if (
+    slotStartHours < 9 || 
+    (slotStartHours === 9 && slotStartMinutes < 0) ||
+    slotEndHours > 17 ||
+    (slotEndHours === 17 && slotEndMinutes > 0)
+  ) {
+    continue;
+  }
 
   // Check if the slot falls on a weekend
   if (isWeekend(slotStart)) continue;
