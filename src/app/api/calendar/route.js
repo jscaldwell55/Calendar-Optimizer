@@ -123,7 +123,14 @@ export async function POST(req) {
 
     console.log('Busy periods found:', busyPeriods);
 
-   const availableSlots = [];
+  // Helper function to check if time is within business hours (9 AM to 5 PM)
+const isWithinBusinessHours = (date) => {
+  const hours = date.getHours();
+  return hours >= 9 && hours < 17; // 9 AM <= hours < 5 PM
+};
+
+// Find available slots
+const availableSlots = [];
 const slotDuration = duration * 60 * 1000;
 const stepSize = 30 * 60 * 1000;
 
@@ -203,6 +210,7 @@ while (currentTime < timeMax.getTime() && availableSlots.length < 5) {
 
   currentTime += stepSize;
 }
+
 
     return new Response(
       JSON.stringify({
